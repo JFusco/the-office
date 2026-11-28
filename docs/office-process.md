@@ -447,7 +447,163 @@ has completed, a draft whose issue and head match that built head counts as veri
 stage then marks it ready through its effect, and a job parked at the readiness review on such a
 draft is sent back to that stage on its next observation, once per head. A run still in flight is
 left alone, because it re-reads its draft on every step. The readiness review and merge
-authorization are unchanged (`server/delivery/publication/maintenance-verified-draft.ts`).
+authorization are unchanged (`server/delivery/publication/maintenance-verified-draft.ts`). A group
+published under the #612 contract counts only through its completion record (below): the record's head
+and pull request must be the job's, and a content-only `draft-pr` step with no receipts proves nothing.
+
+### Maintenance publication (#612)
+
+Weekly CMS maintenance and Brain's repair follow-up publish nothing themselves. Their models write
+content; the harness files, pushes, opens, comments, assigns and moves cards, each through one Effect
+with read-back, and records what it published and for which head (`server/maintenance/publication/`).
+
+- **Versioned steps.** A step saved under this contract carries `publicationVersion: 1`, written by the
+  harness. Publication progress (`run.publication`: the issue decision, verified issue, owned candidate,
+  retained evidence, approved draft bytes, push, pull request and link) is kept beside the steps, never
+  in a worker's saved result. Steps saved before #612 replay under their original contract and are never
+  published retrospectively. An unstarted position of an older run takes the new contract only when no
+  worker ran there without a saved step (`versioned-stage.ts`); an ambiguous attempt goes to its
+  original read-back. At the `proposal` position that check runs first, for an earlier editor and, while
+  no issue decision is saved, an earlier `proposal-issue` worker, before any decision, issue or worktree
+  (`candidate-group.ts`); another candidate's decision worker is accounted for by the decision it saved. A
+  candidate left to delivery after its issue but before its editor keeps that skip on replay, so a later
+  candidate's saved steps stay its own. A legacy proposal group published by its own model has no push-hook baseline from
+  before its editing, so the harness stops it with `authority` rather than publishing it, its saved steps and
+  receipts unchanged; the group works on a copy of its saved candidate, so normalizing a path or attaching an
+  approach never edits a saved step. A run stopped at any phase reloads unchanged and never resumes by itself.
+- **Continuing after a stop.** The deliberate action is the run's read-back (a PM recheck of its
+  `maintenance:<run>` item, or `reconcile-maintenance`): attempted writes settle from their saved payloads, a
+  harness-only stop is settled with its unfinished work in the ledger, and nothing is resent. The versioned
+  read-back runs only under a running scheduler claim bound to the run (its scheduled `recovery:<run>`, a
+  `reconcile-maintenance` request keyed to it, or the PM recheck whose action names it), rechecked before each
+  settlement and before the run is saved (`reconcile-authority.ts`); without one, the run, its Effects and the
+  ledger stay untouched. A new deliberate
+  or scheduled run then starts from current evidence and reuses the keyed issue. It never adopts a candidate it
+  did not record: an earlier run's or a legacy model's worktree or branch for the issue stops it with
+  `authority`, naming what holds it and the earlier run that recorded it, including a run that saved only its
+  worktree intent (`prepare-candidate.ts`). A person resumes it by reading back the earlier
+  run and removing that unpublished checkout and branch, or by leaving the surface to delivery; the next run
+  then prepares a fresh candidate.
+- **Issue.** At the `proposal` position, a read-only `proposal-issue` phase decides the issue (adopt
+  one, propose one, reroute before any write, or block) and is saved without taking a step slot; the
+  run yields (`prepare-proposal.ts`). The next claim verifies or files it (`create-issue.ts`): a stable
+  key from the repository, registered source, locator, evidenced change and affected profile
+  (`issue-key.ts`; Brain: source and defect), every part named by the selected vendor surface before the
+  decision is saved (an unmarked issue is adopted only when its own text names every part too); the issue-creator
+  rules (`issue-content.ts`); canonical labels with an `area:` label; every page of every state searched
+  separately for the exact marker and exact title (`issue-search.ts`). One open, unambiguous issue that
+  establishes the same change is adopted; a title alone, a closed or conflicting match or an outstanding
+  create stops; otherwise one REST create with `assignees: ["JFusco"]` (until #593) is read back field
+  by field, including its writer. A dropped field leaves the create unverified with its identity kept;
+  it is never created again, a search miss never clears an attempted create, and once a create's response
+  named an issue only that issue (number, URL, node ID) can settle it, in immediate, CMS and Brain read-back
+  alike. A verified create's receipt stays the key's issue for later runs, even after its title or marker
+  changes; a missing or replaced issue stops instead of a second create.
+- **Candidate.** After the issue, holds and competing delivery ownership are checked again, then the
+  owned worktree is made on `codex/<issue>-<slug>` from freshly fetched `origin/<target>` by the shared
+  candidate mechanics with the run as owner (record before create, read back, no harness install). The
+  push-hook baseline (destinations, hook path, delegate chain) is read from that untouched checkout
+  (`hook-baseline.ts`). A recorded candidate is reused before its editor only while it is clean at its
+  recorded base; anything else is preserved for reconciliation.
+- **Workers.** Every affected stage launches under an explicit policy (`server/workers/maintenance-launch.ts`)
+  beside the historical `workerProfile` mapping: Claude readers (`proposal-issue`, `proposal-plan`,
+  `draft-pr`), the Claude editor (`proposal`, Bash only, in its worktree, sandboxed), Codex readers
+  (`vendor-review`, `proposal-plan-review`, `proposal-review`, Brain `maintenance-blocker`) and Codex
+  checks (`package-verification`, `browser-verification`). Each assignment is built from the stage
+  contract and harness-read evidence (`versioned-assignment.ts`): the vendor scan artifacts the harness
+  downloaded and the registered sources (`vendor-packet.ts`), ownership, holds, issues, PRs and board
+  state; the vendor packet keeps looking for the latest full scan past its eight daily observations and states
+  any coverage gap. Retained handover policies appear only as ids and digests, so no raw publishing directive,
+  `ISSUE FLOW` or native-tool instruction reaches the worker; the daily follow-up keeps
+  `cmsFollowUpInstructions`. The editor's policy protects the worktree and administrative Git pointers,
+  and the harness checks both recorded Git directories before it inspects a candidate or observes its remote ref.
+  The changes a worker's assignment saw to its owned branch, PRs from it and
+  the keyed issue are recorded; a moved head stops with `authority`, an unsettled write with
+  `uncertain-effect`, and unrelated comments do not stop the run (`worker-interval.ts`).
+- **Evidence.** Before a versioned editor or QA step yields, its reported check outputs are copied
+  from the assignment's private scratch into the run's directory, mapped to worker, candidate and head
+  (`retain-evidence.ts`). The implementation and QA gates read that copy on first use and on replay, all
+  or none: one missing, changed or other-head output fails the step; historical gates keep their original
+  paths.
+- **Draft.** `draft-pr` returns the title and body as content. Their exact bytes (a title needing
+  normalization is refused, never trimmed) are bound to the verified issue, worktree, branch, reviewed head
+  and target, linted with the confined runner
+  (`confined-runner.ts`: seatbelt, no network, writes only to scratch), then published
+  (`publish-draft.ts`): one push of the exact head to its own ref (`push-candidate.ts`, after the
+  destination, hook path and delegate chain match the baseline on the operator and App routes alike;
+  hooks stay on; an existing intent for the head is handled first, a verified one honored from its receipt
+  and an attempted one looked up only inside its saved-writer read-back), one draft by delivery's explicit-head `gh pr create --draft` with the body on stdin
+  (`create-draft.ts`, after every page and state of the branch is read; a second PR, a fork, another
+  base or other content stops; a fresh create checks the remote branch against the reviewed head at admission
+  and at the end of preflight), and one exact link comment (`link-issue.ts`). An original create records
+  `{number, url, head, contentSha256}` only when its printed URL is the draft read back with those
+  bytes; a lost response settles with the state alone, and only against the bytes, base and issue that
+  create saved. The group's completion record (`group-record.ts`) is written only after the issue, remote
+  ref, draft and the recorded link comment (ID, URL, author and exact body) read back again. Promotion and cleanup accept only a complete record (all four
+  publication references, the proposal binding, and the issue, branch, head, path and PR identity), and
+  promotion only for a job that recorded that PR.
+- **Effects.** Every write goes through `maintenance-effect.ts`: work kind `maintenance`, attempt
+  the run, `office-harness`, id `maintenance:<run>:<candidate-or-followup>:<operation>`, the fixed
+  GitHub adapter and the saved writer. A fresh write needs the run's own running claim (CMS: its
+  maintenance claim; Brain: its `repair-followup` continuation), the run still working, no hold and no
+  competing delivery job, checked before admission, after the asynchronous preflight and inside the
+  dispatch transaction, once the writer checks pass. Push checks the full ownership again after credential validation,
+  immediately before starting Git. Maintenance has no resend exception.
+- **Recovery.** `GitHubMaintenance.reconcile` first reads back every attempted publication write of the
+  run under its saved writer (`reconcile-publication.ts`); an unknown operation or an incomplete read
+  keeps the run stopped. A stop the harness made with no worker execution in doubt is then settled from
+  those Effects. A spawned worker without a saved step or issue decision requires read-back of its native session,
+  even if the provider completed. For a versioned worker that read-back binds the retained launch record to the
+  worker, stage, policy and process directory. Checks runners use their recorded scratch as the process directory
+  (`versioned-readback.ts`). A prior run with an unsettled publication write is
+  never superseded, and no run publishes over another's unsettled write on the same branch, issue or
+  link (`publication-gate.ts`).
+- **Brain repair follow-up.** The follow-up persists a read-only diagnosis first, then routes it
+  (`server/maintenance/brain/brain-repair-issue.ts`): verify or file the keyed repair issue with the
+  original run marker as provenance, assign an adopted issue missing `JFusco` with one write that keeps
+  its owners, and add or move its card through this follow-up's own Effects (an absent, Backlog or unset
+  card moves; another lane stops; the status write is bound to the item, project, Status field and option
+  IDs, rereads the lane in its preflight and settles only against those IDs). It completes only when the
+  open, assigned issue and the card read back and pickup remains enabled for that lane after the board read. The diagnosis binds the reconciled run's
+  own source and defect, an adoption must name a positive issue, and a saved diagnosis routes fresh writes only
+  while its `codex-reader` record is still qualified. Before, and in the preflight of, a fresh assignment or card
+  write the recorded issue must still be the same open issue. A PM recheck of the served `maintenance-blocker:<run>` action, or IT for a
+  versioned follow-up with attempted writes, queues one `reconcile-maintenance` request; the scheduler's
+  read-back settles every attempt and sends nothing, completing the follow-up or queueing only its unsent
+  phase. If every routing phase was saved and final verification fails, it records the mismatch and stays stopped.
+  A saved blocked decision stays stopped with its reason, and a diagnosis whose launch was refused before
+  any worker started is queued to run once (`brain-followup-readback.ts`). The read-back rechecks its own running
+  request claim on entry, after each provider read before settling, and before updating the follow-up. The nightly runner stays Brain's own publication authority.
+- **Launch qualification.** Each policy launches only when a host record matches the exact invocation
+  (`server/workers/launch-qualification.ts`): stage, host, pinned executable (realpath, version, digest),
+  ordered arguments and settings after the per-assignment substitutions, managed configuration, tools,
+  filesystem and network policy and every paired control. An unreadable managed configuration refuses qualification.
+  The whole chain is checked again before the
+  first fresh publication Effect, host and template alike (`chain-qualification.ts`, which `status` uses
+  too), and a record may bind only a canonical executable registered for its pin. A missing, partial, stale or mismatched record is an `authority` stop
+  naming the stage, the qualification and the mismatch; no worker starts and no fresh Effect is sent,
+  while earlier attempts stay readable. `launch-policy.json` remains a diagnostic only. The procedure,
+  including requalification after a provider update, is
+  [Maintenance launch qualification](maintenance-launch-qualification.md). Under Vitest the pinned paths
+  and the `claude` and `codex` names are refused before any child starts (`live-reach.ts`).
+- **Hold (coordinator decision, 2026-11-28).** CMS maintenance publication stays held until every policy
+  qualifies on the Office host. The fail-closed `authority` stop and the push-hook refusal stay as they are;
+  the repository's required hooks and the current push policy stay in force. There is no `--no-verify`, hook
+  bypass, new push route, live push, trial or partial cutover, and hook or script text that matches the
+  target is not grounds to trust a chain. Running hooks without credentials is planned separately.
+- **CMS hook blocker.** The CMS `.husky/pre-push` runs `pnpm run verify:ci` and `pnpm run test:packed`:
+  candidate-defined commands a push would run with publication authority. A fresh worktree has no
+  `.husky/_`, so an empty or absent chain could compare equal at baseline and at push; the CMS push is
+  therefore held explicitly (`push-hold.ts`): a fresh or prepared CMS push is refused before marker
+  admission, intent and dispatch, a verified one is honored and an attempted one is only read back.
+- **Draft lint isolation.** The draft lint runs candidate scripts before the push, under a confined
+  profile that no worker record covers. Every route that would run it stops with an `authority` stop whose
+  qualification is `draft-lint-isolation` (`lint-isolation.ts`): before the issue is filed, before an unstarted
+  draft worker, and on a resume from saved content, for any project on the weekly route. Worker records do
+  not open it; it needs its own reviewed isolation qualification.
+- **D4 boundary.** This confines what the maintenance workers can run; it does not separate
+  credentials. The workers still run under the operator's account, and the write inventory keeps their
+  rows until host qualification passes for every policy. Full credential separation stays with #629 D4.
 
 ### Release-marker check
 
@@ -714,6 +870,10 @@ earlier head of this pull request and unedited since:
   description edits can be attributed to the Office. A tie, conflicting records, a newer unprovable
   write or bytes matching only an older write are refused. An unsettled write requires read-back.
   An adopted pull request or a shared editor login cannot establish authorship.
+- A maintenance run's own harness create (#612) is attributed the same way: its run exists, the Effect
+  is under that run with the `pr-create:<head>` key, its base is the target and its receipt names this
+  pull request and head with the original digest. A maintenance and a delivery create of the same pull
+  request, in either order, are competing creators and decline.
 - With no Office write recorded, a completed maintenance run proves a never-edited description it
   created (`server/maintenance/draft-provenance.ts`): its latest passed proposal for the issue and branch
   gives the head; one completed draft worker of the following draft step, bound to its claim,
@@ -1405,7 +1565,9 @@ Every Office GitHub mutation is a write route: one project and one fixed operati
 `comment`, `workflow-dispatch`, `workflow-rerun`, `board-add`, `board-status` and `board-field`. The
 inventory (`write-inventory.ts`) lists every publisher of each route, the mutation it sends, and the
 publishers that do not yet go through the checked claim: the journal-only board writers and the model
-workers that still publish directly until D4. A route is sent as the operator (Joe's stored `gh` login) or
+workers that still publish directly until D4. Weekly maintenance publication now goes through the
+harness (Maintenance publication, above); its worker rows leave the inventory only after host
+qualification (`docs/maintenance-launch-qualification.md`). A route is sent as the operator (Joe's stored `gh` login) or
 as the Office GitHub App, never by a model's choice.
 
 - **Configuration.** The public `githubApp` block of `office-config.json`

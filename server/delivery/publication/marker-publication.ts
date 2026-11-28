@@ -56,9 +56,10 @@ export function pullRequestObservation(store: Pick<Store, 'project'>, pr: any, c
  * refs, the checkout and job authority must still be what the check classified.
  */
 export async function admitMarkedPush(store: Store, execute: Execute, job: Pick<TicketJob, 'id' | 'candidateBase'>, candidate: Candidate,
-    observation: MarkerObservation | undefined, assertCurrent: () => void, node?: string): Promise<(() => Promise<void>) | undefined> {
+    observation: MarkerObservation | undefined, assertCurrent: () => void, node?: string, pushEffectId?: string): Promise<(() => Promise<void>) | undefined> {
     if (!releaseMarkerApplies(store)) return undefined;
-    const prior = store.getEffect(activeEffectId(store, `harness:${job.id}:push:${candidate.head}`));
+    // The push's own active Effect: a delivery job's `harness:<job>:push:<head>`, or the id another owner supplies (#612).
+    const prior = store.getEffect(pushEffectId ?? activeEffectId(store, `harness:${job.id}:push:${candidate.head}`));
     if (prior && ['dispatching', 'uncertain', 'verified'].includes(prior.status)) return undefined;
     const fresh = async (): Promise<ObservedTips> => { const refs = await remoteRefs(execute, candidate, store.project.target); return { target: refs.target, published: refs.candidate }; };
     const verdict = await checkReleaseMarkers({ store, execute, job, head: candidate.head, worktree: candidate.worktree, observed: observation?.tips,

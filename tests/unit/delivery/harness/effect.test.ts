@@ -81,3 +81,19 @@ test('an ordinary guard, including one with its own optional parameter, is calle
     await harnessEffect(f.store, job, { key: 'k', operation: 'op', target: 't', payload: {}, guard, dispatch: async () => ({ ok: true }), readBack: async () => ({ ok: true }) });
     expect(calls).toEqual([[], []]);
 });
+
+test('checked execution keeps delivery ids and binds another owner\'s work, attempt and synchronous claim (#612)', async () => {
+    const { checkedEffect } = await import('../../../../server/delivery/harness/effect');
+    const f = fakeGitHub(), job = f.candidate();
+    let writes = 0, refuse = 'not this claim';
+    const effect = { key: 'k2', operation: 'op', target: 't', payload: {}, guard: () => {}, dispatch: async () => { writes++; return { ok: true }; }, readBack: async () => ({ ok: true }) };
+    await harnessEffect(f.store, job, effect);
+    expect(f.store.getEffect(`harness:${job.id}:k2`)).toMatchObject({ work: { kind: 'delivery', id: job.id }, attemptId: job.id });
+    const binding = { base: 'maintenance:run:subject:k3', work: { projectId: f.store.project.id, kind: 'maintenance' as const, id: 'run' }, attemptId: 'run', claim: () => refuse || undefined };
+    await expect(checkedEffect(f.store, binding, { ...effect, key: 'k3' })).rejects.toThrow('not this claim');
+    expect(f.store.getEffect('maintenance:run:subject:k3')).toMatchObject({ status: 'rejected', dispatchedAt: '' });
+    refuse = '';
+    await checkedEffect(f.store, { ...binding, base: 'maintenance:run:subject:k4' }, { ...effect, key: 'k4' });
+    expect(f.store.getEffect('maintenance:run:subject:k4')).toMatchObject({ status: 'verified', work: { kind: 'maintenance', id: 'run' }, attemptId: 'run' });
+    expect(writes).toBe(2);
+});

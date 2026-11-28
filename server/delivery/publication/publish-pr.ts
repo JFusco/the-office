@@ -8,6 +8,8 @@ import { createdContentSha256 } from './created-content';
 import { assertMetadataBinding, metadataAppliesToHead } from './metadata-context';
 import { publishMetadata } from './publish-metadata';
 import { recordedPush } from './record-push';
+import { remoteHead } from './remote-head';
+import { dispatchDraftCreate } from './pr-create-dispatch';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import { readPublication } from './read-command';
 import { assertExistingPublication } from './existing-publication';
@@ -28,11 +30,6 @@ function assertCandidate(store: Store, jobs: TicketJob[], job: TicketJob, candid
     assertDeliveryMayMutate(store, jobs, job, candidate.head);
     if (job.branch !== candidate.branch || job.worktree !== candidate.worktree)
         throw new Error('Candidate branch or worktree changed before a harness write');
-}
-
-async function remoteHead(execute: Execute, candidate: Candidate): Promise<string> {
-    const line = (await execute('git', ['ls-remote', '--heads', 'origin', `refs/heads/${candidate.branch}`], { cwd: candidate.worktree, timeout: 60000, readOnly: true })).trim();
-    return line ? line.split(/\s+/)[0] : '';
 }
 
 /** This candidate's push was sent and not yet read back: its intent is still dispatching or uncertain. */
@@ -128,7 +125,7 @@ export async function publishCandidate(store: Store, execute: Execute, jobs: Tic
         key: `pr-create:${head}`, operation: 'github-pr-create', target: `${repository}:${branch}`, payload: { head, branch, base: target },
         guard: () => assertCandidate(store, jobs, job, candidate),
         dispatch: async () => {
-            const printed = await execute('gh', ['pr', 'create', '--repo', repository, '--base', target, '--head', branch, '--draft', '--title', content.title, '--body-file', '-'], { cwd: worktree, input: content.body, timeout: 120000 });
+            const printed = await dispatchDraftCreate(execute, { repository, base: target, branch, title: content.title, body: content.body, cwd: worktree });
             // Only this original create records what it published; a reconciliation reads back number and URL alone.
             const pr = await retryRead(linkedDraft), contentSha256 = createdContentSha256(printed, pr, content);
             return pr ? { number: pr.number as number, url: pr.url as string, ...(contentSha256 ? { contentSha256 } : {}) } : null;

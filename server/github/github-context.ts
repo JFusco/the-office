@@ -36,6 +36,16 @@ export function maintenancePolicies(store: Store) {
     return policies.map(p => `ORIGINAL USER POLICY ${p.id}:\n${p.prompt}\nLEGACY EVIDENCE (read only, may be stale): ${p.memory}`).join('\n\n');
 }
 
+/**
+ * The same saved handover policies as provenance for a versioned #612 maintenance assignment: their ids and prompt
+ * digests only, so their raw publishing directives never reach a confined worker. Missing policies still stop the run.
+ */
+export function maintenancePolicyEvidence(store: Store): { id: string; promptSha256: string }[] {
+    maintenancePolicies(store);
+    const policies = JSON.parse(readFileSync(resolve(store.dataRoot, 'handover', 'policies.json'), 'utf8')) as { id: string; prompt: string }[];
+    return policies.map(policy => ({ id: policy.id, promptSha256: createHash('sha256').update(policy.prompt).digest('hex') }));
+}
+
 /** Completed delivery research is context only; its source artifacts remain independently inspectable. */
 export function deliveryResearchContext(store: Store, ticket: string) {
     return store.state.messages.filter(message => {

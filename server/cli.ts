@@ -7,6 +7,8 @@ const [cmd,...rawArgs]=process.argv.slice(2);
 // Pinning a release is the one Overseer verb that loads Office configuration and release verification, through its own import.
 if(cmd==='overseer'&&rawArgs[0]==='pin'){const {pinCommand}=await import('./overseer/pin-command');process.exitCode=await pinCommand(rawArgs.slice(1));}
 else if(cmd==='overseer'){const {overseerCommand}=await import('./overseer/commands');process.exitCode=await overseerCommand(rawArgs);}
+// Maintenance launch qualification records (#612): local files only, no running service needed.
+else if(cmd==='launch-qualification'){const {qualificationCommand}=await import('./workers/qualification/qualification-command');process.exitCode=await qualificationCommand(rawArgs);}
 else{
 const {PORT}=await import('./office/config');
 const projectIndex=rawArgs.indexOf('--project');const project=projectIndex>=0?rawArgs[projectIndex+1]:'cec';if(!project)throw new Error('--project requires a project ID');const args=rawArgs.filter((_,i)=>i!==projectIndex&&i!==projectIndex+1||projectIndex<0);const key=args.find(arg=>!arg.startsWith('--'));

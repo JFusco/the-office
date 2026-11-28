@@ -1,5 +1,5 @@
 import { harnessDelivers } from '../harness/scope';
-import { latestProposalGroup, settledDraftStep } from '../../maintenance/proposal-group';
+import { latestProposalGroup, settledDraftStep, versionedGroup, versionedGroupRecord } from '../../maintenance/proposal-group';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 
@@ -20,6 +20,12 @@ export function maintenanceVerifiedDraft(store: Pick<Store, 'project' | 'state'>
         if (run.status !== 'completed') return false;
         const group = latestProposalGroup(run, issue);
         if (!group || run.steps[group.proposal].result.candidates[0].head !== job.head) return false;
+        // A versioned group needs its complete record for this head and the job's own recorded pull request; an empty
+        // receipt list, or a job that has not recorded its pull request, proves nothing.
+        if (versionedGroup(run, group)) {
+            const record = versionedGroupRecord(run, group, store.project.repository);
+            return !!record && record.head === job.head && !!job.pr && record.pr === job.pr;
+        }
         return run.steps.slice(group.proposal + 1, group.end).some(settledDraftStep);
     });
 }

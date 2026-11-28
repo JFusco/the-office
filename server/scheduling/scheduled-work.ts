@@ -182,7 +182,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         if (run.retirement) continue;
         add('maintenance', run, run.stage, run.requestedAt, 3, () => engine.drainMaintenance(run.id), history(supersededRun(run, store.state.maintenance!.runs), ['maintenance', run.id]), run.timing);
         if (run.blockerFollowup)
-            add('continuation', { id: run.id, status: run.blockerFollowup.status, detail: run.blockerFollowup.detail }, 'repair-followup', run.requestedAt, 1, () => coordinator!.pump({ kind: 'followup', id: run.id }));
+            add('continuation', { id: run.id, status: run.blockerFollowup.status, detail: run.blockerFollowup.detail, ...(run.blockerFollowup.stop ? { stop: run.blockerFollowup.stop } : {}) }, 'repair-followup', run.requestedAt, 1, () => coordinator!.pump({ kind: 'followup', id: run.id }));
         if (run.readbackRetry && ['blocked', 'interrupted'].includes(run.status) && !run.readbackRetry.exhausted)
             add('reconciliation', { id: `recovery:${run.id}`, status: 'queued' }, 'maintenance-readback', run.requestedAt, 2, () => coordinator!.pump({ kind: 'recovery', id: run.id }), run.readbackRetry.nextAt && Date.parse(run.readbackRetry.nextAt) > now.getTime() ? eligible('waiting', 'Read retry backoff is active') : null);
     }

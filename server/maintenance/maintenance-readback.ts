@@ -6,14 +6,20 @@ import {currentAssignment} from '../workers/assignment-context';
 import {artifact,digest,rootArtifact,terminationObservation} from '../store/readback-evidence';
 import {offlineNativeEvidence} from '../workers/worker-completion';
 import {workerProfile} from '../workers/worker-profiles';
+import {versionedWorkerDirectories} from './publication/versioned-readback';
+import {unresolvedMaintenanceWorkers,versionedMaintenanceRun} from './publication/reconcile-publication';
+import {ProposalIssueSchema} from './publication/prepare-proposal';
 import type {Store} from '../store/store';
 import type {MaintenanceRun} from '../../src/shared';
 const Text=z.string().trim().min(1),Hash=z.string().regex(/^[a-f0-9]{64}$/);
 const Receipt=z.object({id:Text,action:z.string(),target:z.string(),verified:z.boolean(),uncertain:z.boolean(),detail:z.string().optional()}).strict();
-const names=['assignment.json','assignment-identity.json','provider.json','capabilities.json','error.json','output-error.json','result.json','execution-completion.json','completed-output.json','provider-completion.json'];
+const names=['assignment.json','assignment-identity.json','provider.json','capabilities.json','error.json','output-error.json','result.json','execution-completion.json','completed-output.json','provider-completion.json','maintenance-launch.json'];
 /** This inventory is diagnostic: failed output and process errors never become a successful worker. */
 export function prepareMaintenanceReadback(store:Store,run:MaintenanceRun,roots?:Parameters<typeof offlineNativeEvidence>[3]){
- const originals=(store.state.workLog||[]).filter(w=>w.requestId===run.id&&w.stage!=='maintenance-readback'),work=originals.at(-1);
+ const originals=()=>(store.state.workLog||[]).filter(w=>w.requestId===run.id&&w.stage!=='maintenance-readback');
+ const versioned=versionedMaintenanceRun(run),workers=originals(),pending=versioned?unresolvedMaintenanceWorkers(store,run):workers;
+ if(versioned&&pending.length!==1)throw new Error('One unresolved original maintenance worker required for native read-back');
+ const work=pending.at(-1);
  const context=currentAssignment(),claimBody=(id:string)=>{
   const rows=store.db.prepare('SELECT body FROM work_claims WHERE id=?').all(id)as {body:string}[];
   if(rows.length!==1)throw new Error('One owning maintenance claim required');return rows[0].body;
@@ -22,7 +28,7 @@ export function prepareMaintenanceReadback(store:Store,run:MaintenanceRun,roots?
   !work||!['failed','blocked','interrupted','completed'].includes(work.status)||!work.endedAt||!work.sessionId||!work.claimId||work.lane!=='delivery'||
   !/^[a-zA-Z0-9-]+$/.test(work.id)||context&&(context.lane!=='delivery'||context.claim.work.projectId!==store.project.id||context.claim.status!=='running')||
   (store.state.workLog||[]).some(w=>w.requestId===run.id&&w.stage!=='maintenance-readback'&&['running','stopping'].includes(w.status)))throw new Error('Terminated original maintenance and scheduler-owned reader required');
- const original=structuredClone(work),originalRun=structuredClone(run),project={id:store.project.id,repo:store.project.repo,repository:store.project.repository};
+ const original=structuredClone(work),originalsBefore=versioned?structuredClone(workers):undefined,originalRun=structuredClone(run),project={id:store.project.id,repo:store.project.repo,repository:store.project.repository};
  const rawClaim=claimBody(work.claimId),claim=JSON.parse(rawClaim),readerClaim=context?claimBody(context.claim.id):undefined,readerContext=context?digest(context):undefined;
  if(context&&!isDeepStrictEqual(JSON.parse(readerClaim!),context.claim)||claim.id!==work.claimId||claim.status!=='completed'||!claim.endedAt||claim.lane!=='delivery'||
   claim.work?.projectId!==project.id||claim.work.kind!=='maintenance'||claim.work.id!==run.id)throw new Error('Original maintenance claim binding differs');
@@ -33,12 +39,14 @@ export function prepareMaintenanceReadback(store:Store,run:MaintenanceRun,roots?
  };
  const assignment=json('assignment.json'),identity=json('assignment-identity.json'),provider=json('provider.json'),caps=json('capabilities.json');
  const profile=workerProfile(work.stage,provider.readOnly);
+ // A versioned (#612) worker is bound to its candidate and ran in its own process cwd (a checks runner's scratch); a historical one in the primary checkout.
+ const dirs=assignment.maintenancePolicy?versionedWorkerDirectories(store,run,assignment,work.processId?json('maintenance-launch.json'):undefined,!!work.processId):{worktree:project.repo,process:project.repo};
  if(assignment.id!==work.id||assignment.claimId!==work.claimId||assignment.lane!==work.lane||assignment.stage!==work.stage||assignment.role!==work.role||
-  !isDeepStrictEqual(assignment.work,claim.work)||assignment.scope?.repository!==project.repository||assignment.scope?.worktree!==project.repo||assignment.scope?.artifacts!==dir||assignment.profile!==profile.name||
+  !isDeepStrictEqual(assignment.work,claim.work)||assignment.scope?.repository!==project.repository||assignment.scope?.worktree!==dirs.worktree||assignment.scope?.artifacts!==dir||assignment.profile!==profile.name||
   identity.attemptId!==work.id||identity.requestId!==run.id||identity.projectId!==project.id||identity.repository!==project.repository||identity.threadId!==work.sessionId||identity.role!==work.role||
   provider.project!==project.id||provider.repository!==project.repository||provider.provider!==work.provider||provider.role!==work.role||typeof provider.readOnly!=='boolean'||
   work.provider!==(work.role==='developer'?'claude':'codex')||work.provider==='claude'&&provider.session!==work.sessionId||!isDeepStrictEqual(caps,profile))throw new Error('Original maintenance assignment/capability/session mismatch');
- const native=offlineNativeEvidence(store,work,project.repo,roots),records=readFileSync(native.file.path,'utf8').trim().split('\n').map(line=>JSON.parse(line));
+ const native=offlineNativeEvidence(store,work,dirs.process,roots),records=readFileSync(native.file.path,'utf8').trim().split('\n').map(line=>JSON.parse(line));
  const error=selected.includes('error.json')?json('error.json'):undefined;
  if(error&&(error.session!==work.sessionId||error.provider!==work.provider||!error.error))throw new Error('Original maintenance error identity differs');
  const saved=selected.includes('result.json')?json('result.json'):undefined;
@@ -58,9 +66,13 @@ export function prepareMaintenanceReadback(store:Store,run:MaintenanceRun,roots?
   const rows=z.array(Receipt).max(512).parse(value),ids=new Set<string>();
   for(const receipt of rows){if(ids.has(receipt.id))throw new Error('Duplicate saved attempted maintenance receipt');ids.add(receipt.id);receipts.push({id:`${source}:${receipt.id}`,originalId:receipt.id,source,receipt,receiptSha256:digest(receipt)});}
  };
- if(saved)add(`worker:${work.id}`,saved.result?.receipts);
- if(checkpoint)add(`checkpoint:${work.id}`,checkpoint.receipts);
- if(terminal)add(`native-terminal:${work.id}`,terminal.receipts);
+ const addOutput=(source:string,value:any)=>{
+  if(work.stage==='proposal-issue'&&assignment.maintenancePolicy){ProposalIssueSchema.parse(value);return;}
+  add(source,value?.receipts);
+ };
+ if(saved)addOutput(`worker:${work.id}`,saved.result);
+ if(checkpoint)addOutput(`checkpoint:${work.id}`,checkpoint);
+ if(terminal)addOutput(`native-terminal:${work.id}`,terminal);
  run.steps.forEach((step,index)=>add(`step:${index}`,step.result.receipts));
  if(receipts.length>512)throw new Error('Maintenance receipt inventory exceeds bound');
  const packet={runId:run.id,originalWorkId:work.id,originalStatus:work.status,originalError:run.error,assignment,originalClaim:claim,files,native:{file:native.file,recordCount:native.recordCount},
@@ -71,6 +83,7 @@ export function prepareMaintenanceReadback(store:Store,run:MaintenanceRun,roots?
   if(store.state.paused||!isDeepStrictEqual(project,{id:store.project.id,repo:store.project.repo,repository:store.project.repository})||
    !isDeepStrictEqual(store.state.maintenance?.runs.filter(r=>r.id===run.id),[originalRun])||
    !isDeepStrictEqual(store.state.workLog?.filter(w=>w.id===original.id),[original])||
+   versioned&&!isDeepStrictEqual(originals(),originalsBefore)||
    store.state.workLog?.some(w=>w.id!==original.id&&w.sessionId===original.sessionId)||
    (context?digest(currentAssignment())!==readerContext||claimBody(context.claim.id)!==readerClaim:!!currentAssignment())||claimBody(original.claimId!)!==rawClaim||
    !isDeepStrictEqual(present(),selected)||files.some(f=>!isDeepStrictEqual(artifact(store,f.path),f))||

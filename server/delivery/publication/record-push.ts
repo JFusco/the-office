@@ -8,25 +8,32 @@ import { assertPushCredential } from '../../github/identity/push-credentials';
 import type { command } from '../../workers/process';
 import type { LifecycleDiagnostic } from '../../workers/lifecycle/contract';
 import type { Store } from '../../store/store';
-import type { TicketJob } from '../../../src/shared';
+import type { TicketJob, WorkRef } from '../../../src/shared';
 
 type Candidate = Readonly<{ head: string; branch: string; worktree: string }>;
 
+/**
+ * Whose push this is when it is not a delivery job's own: the active Effect id, its work reference and attempt, and
+ * the owned directory its native capture goes in (a maintenance run keeps it under the run and candidate, #612).
+ */
+export interface PushCapture { effectId: string; work: WorkRef; attemptId: string; root: string }
+
 /** Records the one ordinary push already owned by Effects. No retry, status change or recovery admission. */
 export async function recordedPush(store: Store, execute: typeof command, job: Pick<TicketJob, 'id'>, candidate: Candidate,
-    guard: () => void, timeout: number) {
+    guard: () => void, timeout: number, capture?: PushCapture) {
     guard();
     if (!/^[a-f0-9]{40}$/.test(candidate.head) || !/^[\w-]{1,100}$/.test(job.id)) throw new Error('Exact push capture identity is required');
-    const id = activeEffectId(store, `harness:${job.id}:push:${candidate.head}`), effect = store.getEffect(id);
-    if (!effect || effect.status !== 'dispatching' || effect.operation !== 'git-push' || effect.work.kind !== 'delivery' ||
-        effect.work.id !== job.id || effect.work.projectId !== store.project.id || effect.attemptId !== job.id ||
+    const id = capture?.effectId ?? activeEffectId(store, `harness:${job.id}:push:${candidate.head}`), effect = store.getEffect(id);
+    const work = capture?.work ?? { projectId: store.project.id, kind: 'delivery', id: job.id }, attemptId = capture?.attemptId ?? job.id;
+    if (!effect || effect.status !== 'dispatching' || effect.operation !== 'git-push' || effect.work.kind !== work.kind ||
+        effect.work.id !== work.id || effect.work.projectId !== store.project.id || work.projectId !== store.project.id || effect.attemptId !== attemptId ||
         effect.target !== `${store.project.repository}:${candidate.branch}` ||
         digest(effect.payload) !== digest({ head: candidate.head, branch: candidate.branch }))
         throw new Error('The original dispatching push Effect is required before native capture');
     // Check the scoped destination and helper again before native capture, with hook qualification for App pushes.
     await assertPushCredential(store, execute, realpathSync(candidate.worktree));
     guard();
-    const root = resolve(store.dataRoot, 'ticket-work', job.id);
+    const root = capture?.root ?? resolve(store.dataRoot, 'ticket-work', job.id);
     ownedPath(store, root);
     const directory = resolve(root, `push-${candidate.head}`);
     mkdirSync(directory, { mode: 0o700 }); // Existing capture requires read-back, never a second command.

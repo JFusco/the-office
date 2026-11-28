@@ -1,4 +1,4 @@
-import { activeEffectId, harnessEffect } from '../../harness/effect';
+import { activeEffectId, harnessEffect, type HarnessEffect } from '../../harness/effect';
 import { readBackOrThrow } from '../../harness/read-retry';
 import { cardStatus, projectCards, projectGraphql, setCardStatus, statusField, type Execute } from '../../board/project-graphql';
 import { readRepo } from './qualify';
@@ -87,13 +87,27 @@ export async function ensureAlertIssue(store: Store, execute: Execute, record: {
  * Puts the issue's card in the pickup lane so the Office works it like any other ticket. Only a card
  * that is absent or still in Backlog is moved; any other lane is a person's or the harness's own choice.
  */
-export async function ensurePickupCard(store: Store, execute: Execute, record: { id: string }, issue: AlertIssue, pickupLane: string, guard: Guard): Promise<void> {
+/** Who records a pickup-card write: delivery's own harness Effect by default; a maintenance follow-up passes its own (#612). */
+export type CardEffect = <R>(effect: HarnessEffect<R>) => Promise<R>;
+export interface PickupCardOptions {
+    effect?: CardEffect;
+    /** Stop on a card in any other lane instead of leaving it as it is. */
+    refuseOtherLanes?: boolean;
+    /**
+     * Bind the status write to the card item, project, Status field and option IDs it targets, and reread the card's
+     * lane in its preflight: a card moved to an ineligible lane meanwhile receives no write (#612, maintenance only).
+     */
+    bindStatus?: boolean;
+}
+
+export async function ensurePickupCard(store: Store, execute: Execute, record: { id: string }, issue: AlertIssue, pickupLane: string, guard: Guard, options: PickupCardOptions = {}): Promise<void> {
     if (!store.project.githubProject) return;
+    const write: CardEffect = options.effect ?? (effect => harnessEffect(store, record, effect));
     const field = await statusField(store, execute), lanes = field.options.filter(o => o.name.trim().toLowerCase() === pickupLane.trim().toLowerCase());
     if (lanes.length !== 1) throw new Error(`Project board needs exactly one "${pickupLane}" Status option; found ${lanes.length}`);
     const option = lanes[0];
     const card = async () => (await projectCards(store, execute, field.projectId, [{ kind: 'Issue', number: issue.number }]))[0] || null;
-    const item = await card() ?? await harnessEffect(store, record, {
+    const item = await card() ?? await write({
         key: `card:${issue.number}`, operation: 'github-project-add', target: `${field.projectId}:issue-${issue.number}`, payload: { issue: issue.number }, guard,
         dispatch: async () => {
             await projectGraphql(store, execute, 'mutation($project:ID!,$content:ID!){addProjectV2ItemById(input:{projectId:$project,contentId:$content}){item{id}}}', { project: field.projectId, content: issue.nodeId }, false);
@@ -102,10 +116,24 @@ export async function ensurePickupCard(store: Store, execute: Execute, record: {
         readBack: card,
     });
     const current = await cardStatus(store, execute, item.id, field.fieldId), lane = field.options.find(o => o.id === current)?.name.trim().toLowerCase() || '';
-    if (current === option.id || lane && lane !== 'backlog') return;
+    if (current === option.id) return;
+    if (current && !lane && options.refuseOtherLanes) throw new Error(`The card for #${issue.number} is in an unknown lane; the harness will not move it`);
+    if (lane && lane !== 'backlog') {
+        if (options.refuseOtherLanes) throw new Error(`The card for #${issue.number} is in "${lane}", which the pickup policy does not move`);
+        return;
+    }
     const inLane = async () => await cardStatus(store, execute, item.id, field.fieldId) === option.id ? { lane: option.name } : null;
-    await harnessEffect(store, record, {
-        key: `card-status:${item.id}`, operation: 'github-project-status', target: item.id, payload: { lane: option.name }, guard,
+    // Eligible for the move: no lane yet, Backlog, or already the pickup lane.
+    const eligible = (status: string | undefined) => !status || status === option.id || field.options.find(o => o.id === status)?.name.trim().toLowerCase() === 'backlog';
+    const bound = options.bindStatus ? {
+        payload: { lane: option.name, project: field.projectId, field: field.fieldId, option: option.id, item: item.id },
+        guard: async () => {
+            await guard();
+            if (!eligible(await cardStatus(store, execute, item.id, field.fieldId))) throw new Error(`The card for #${issue.number} moved to a lane the pickup policy does not move before its status write; nothing was sent`);
+        },
+    } : { payload: { lane: option.name }, guard };
+    await write({
+        key: `card-status:${item.id}`, operation: 'github-project-status', target: item.id, payload: bound.payload, guard: bound.guard,
         dispatch: async () => { await setCardStatus(store, execute, field.projectId, item.id, field.fieldId, option.id); return readBackOrThrow(inLane, `${option.name} lane for issue #${issue.number}`); },
         readBack: inLane,
     });

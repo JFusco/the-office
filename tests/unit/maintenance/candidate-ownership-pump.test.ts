@@ -17,6 +17,7 @@ const surface = (summary: string) => new RegExp(`Surface: \\{"issue":0,[^\\n]*${
 const savedProposal = (issue: number) => ({ role: 'developer', stage: 'proposal', at: '2026-11-07T20:03:00Z', result: { ...passed, candidates: [{ ...held, issue, worktree: '/nonexistent', branch: 'b', head: 'h' }] } });
 const deliveryJob = { id: 'a67', key: 'GH-112', status: 'blocked', stage: 'implement' };
 
+/** Under #612 an unstarted proposal position first runs its read-only `proposal-issue` phase, so that is the first launch. */
 function weeklyRun(candidates: unknown[], extraSteps: any[] = []) {
     const root = mkdtempSync(resolve(tmpdir(), 'office-candidate-owner-')), store = new Store(':memory:', projectById('cms-field-vocabulary'), root);
     cleanup.push(() => { store.close(); rmSync(root, { recursive: true, force: true }); });
@@ -42,7 +43,7 @@ function weeklyRun(candidates: unknown[], extraSteps: any[] = []) {
 test('a candidate owned by a delivery job is skipped and the next candidate proceeds', async () => {
     const { store, run, calls, maintenance } = weeklyRun([held, fresh]);
     await maintenance.pump(run.id);
-    expect(calls.map(c => c.stage)).toEqual(['proposal']);
+    expect(calls.map(c => c.stage)).toEqual(['proposal-issue']);
     expect(calls[0].task).toMatch(surface('Contentstack refinement'));
     expect(run.skippedCandidates).toEqual([{ index: 0, checkpoint: 'triage', issue: 112, reason: 'GH-112 is owned by delivery job a67 (blocked at implement)', at: expect.any(String) }]);
     expect(store.state.maintenance!.ledger).toMatch(/^Retained ledger\.\nSKIPPED CANDIDATE #112 \(maintenance \d{4}-\d{2}-\d{2}\): GH-112 is owned by delivery job a67 \(blocked at implement\)$/);
@@ -55,7 +56,7 @@ test('a recorded skip holds on resume after the delivery job settles, so saved s
     store.state.coordination!.jobs![0].status = 'cancelled';
     run.status = 'queued';
     await maintenance.pump(run.id);
-    expect(calls.map(c => c.stage)).toEqual(['proposal', 'proposal']);
+    expect(calls.map(c => c.stage)).toEqual(['proposal-issue', 'proposal-issue']);
     expect(calls[1].task).toMatch(surface('Contentstack refinement'));
     expect(run.skippedCandidates).toHaveLength(1);
     expect(store.state.maintenance!.ledger).toBe(ledger);
@@ -74,7 +75,7 @@ test('a candidate with steps saved past a checkpoint is not skipped, so it resum
 test('a proposal that reuses an owned issue is left to delivery before review or draft publication', async () => {
     const { store, run, calls, maintenance } = weeklyRun([fresh, later], [savedProposal(112)]);
     await maintenance.pump(run.id);
-    expect(calls.map(c => c.stage)).toEqual(['proposal']);
+    expect(calls.map(c => c.stage)).toEqual(['proposal-issue']);
     expect(calls[0].task).toMatch(surface('Later surface'));
     expect(run.skippedCandidates).toEqual([{ index: 0, checkpoint: 'proposal', issue: 112, reason: 'GH-112 is owned by delivery job a67 (blocked at implement)', at: expect.any(String) }]);
     expect(store.state.maintenance!.ledger).toContain('SKIPPED CANDIDATE #112');
@@ -87,7 +88,7 @@ test('recorded skips replay with saved candidate steps, so a later candidate nev
     store.state.coordination!.jobs![0].status = 'cancelled';
     run.status = 'queued';
     await maintenance.pump(run.id);
-    expect(calls.map(c => c.stage)).toEqual(['proposal', 'proposal']);
+    expect(calls.map(c => c.stage)).toEqual(['proposal-issue', 'proposal-issue']);
     expect(calls[1].task).toMatch(surface('Later surface'));
     expect(run.skippedCandidates).toHaveLength(2);
 });

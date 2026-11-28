@@ -1,4 +1,5 @@
 import { handsOff } from '../delivery/harness/scope';
+import { outstandingPublication } from './publication/publication-gate';
 import type { Store } from '../store/store';
 import type { MaintenanceRun } from '../../src/shared';
 
@@ -7,9 +8,11 @@ import type { MaintenanceRun } from '../../src/shared';
  * run, because its follow-up re-reads live provider state and de-duplicates before any write.
  * Returns the ids it supersedes; anything else still requires the original read-back.
  */
-export function supersedablePriorRuns(store: Pick<Store, 'project'>, runs: MaintenanceRun[], scheduled: boolean): string[] | null {
+export function supersedablePriorRuns(store: Pick<Store, 'project' | 'db'>, runs: MaintenanceRun[], scheduled: boolean): string[] | null {
     const unverified = runs.filter(run => ['blocked', 'interrupted'].includes(run.status));
     if (!unverified.length) return [];
+    // An attempted #612 publication write is settled only by its own read-back; a later run never supersedes it.
+    if (outstandingPublication(store, { runs: unverified.map(run => run.id) }).length) return null;
     if (unverified.some(run => !run.retirement) && (!scheduled || !handsOff(store))) return null;
     // A run an earlier run already superseded is not superseded again; it stays with that earlier record.
     const claimed = new Set(runs.flatMap(run => run.supersedes || []));

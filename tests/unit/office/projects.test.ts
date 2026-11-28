@@ -125,22 +125,25 @@ test('an uncertain maintenance effect stops later roles and is not automatically
     expect(calls).toHaveLength(1);
     expect(store.state.maintenance?.lastDaily).toBe('');
 });
-test('weekly proposals go through separate developer, lead, QA and draft-publication assignments', async () => {
-    const store = setup(), engine = new Engine(store), calls: {
+test('weekly proposals start with the read-only issue decision under #612; the full developer, lead, QA and draft chain runs unstubbed elsewhere', async () => {
+    // tests/unit/maintenance/versioned-weekly-pump.test.ts drives the same roles through real publication verification.
+    const packetReads = (async (program: string, args: string[]) => program === 'gh' && args[1] === 'list' ? '[]' : args[0] === 'rev-parse' ? 'a'.repeat(40) : '') as any;
+    const store = setup(), engine = new Engine(store, undefined, undefined, undefined, undefined, packetReads), calls: {
         role: string;
         stage: string;
     }[] = [], queue: (string | undefined)[] = [];
-    engine.maintenance.verifyCandidate = async () => { };
-    engine.maintenance.verifyDraft = async () => { };
-    const candidate = { issue: 123, worktree: '/private/tmp/unit-owned-worktree', branch: 'codex/123-fixture', head: 'a'.repeat(40), summary: 'Unit fixture only' };
-    engine.agents.run = async (role, _task, _schema, opts) => { calls.push({ role, stage: opts!.stage! }); queue.push(opts?.enqueuedAt); const path = resolve(store.dataRoot, 'runs', opts!.requestId!, 'fixture-checks.txt'); writeFileSync(path, 'Synthetic verification fixture, not a real test run.'); return { ...result, checks: [{ path, commit: candidate.head, summary: 'Unit fixture only' }], candidates: ['vendor-review', 'proposal'].includes(opts!.stage!) ? [candidate] : [] } as any; };
+    const candidate = { issue: 0, worktree: '', branch: '', head: '', summary: 'Unit fixture only' };
+    engine.agents.run = async (role, _task, _schema, opts) => {
+        calls.push({ role, stage: opts!.stage! }); queue.push(opts?.enqueuedAt);
+        if (opts!.stage === 'proposal-issue') return { outcome: 'blocked', issue: 0, title: '', body: '', labels: [], identity: { source: '', locator: '', change: '', profile: '' }, approach: null, summary: '', blocker: 'Fixture stops at the issue decision' } as any;
+        return { ...result, checks: [], candidates: opts!.stage === 'vendor-review' ? [candidate] : [] } as any;
+    };
     const run = engine.maintenance.request();
     run.weekly = true;
     await drainMaintenance(engine.maintenance);
-    expect(run.status).toBe('completed');
-    expect(calls).toEqual([{ role: 'pm', stage: 'follow-up' }, { role: 'pm', stage: 'vendor-review' }, { role: 'developer', stage: 'proposal' }, { role: 'lead', stage: 'proposal-review' }, { role: 'qa', stage: 'package-verification' }, { role: 'developer', stage: 'draft-pr' }]);
-    expect(store.state.maintenance?.lastWeekly).not.toBe('');
-    expect(queue).toEqual([run.requestedAt, undefined, undefined, undefined, undefined, undefined]);
+    expect([run.status, run.error]).toEqual(['blocked', expect.stringContaining('Fixture stops at the issue decision')]);
+    expect(calls).toEqual([{ role: 'pm', stage: 'follow-up' }, { role: 'pm', stage: 'vendor-review' }, { role: 'developer', stage: 'proposal-issue' }]);
+    expect(queue).toEqual([run.requestedAt, undefined, undefined]);
 });
 test('candidate isolation uses the Git worktree root and accepts a nested isolated worktree', async () => {
     const store = setup(), primary = resolve(store.dataRoot, 'primary');

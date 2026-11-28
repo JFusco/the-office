@@ -12,11 +12,22 @@ import { resolve } from 'node:path';
 import { mkdirSync, writeFileSync, realpathSync } from 'node:fs';
 import { command } from '../workers/process';
 import { ApproachSchema, APPROACH_GUIDANCE, reviewInstructions } from '../delivery/pipeline/approach';
-import { containedFile } from '../cec/workflow';
 import type { Store } from '../store/store';
 import type { Agents } from '../workers/agents';
 import type { MaintenanceRun, MaintenanceResult, Role, WorkApproach } from '../../src/shared';
 import { maintenancePolicies, GITHUB_ISSUE_SKILL } from '../github/github-context';
+import { StageYield } from './stage-yield';
+import { reconcileVersionedRun } from './publication/reconcile-run';
+import { runVersionedStep, type VersionedSpec } from './publication/versioned-stage';
+import { weeklyContext } from './publication/weekly-context';
+import { CandidateGroup } from './publication/candidate-group';
+import { qaSpec, readerSpec, reviewSpec, vendorReviewSpec } from './publication/group-launches';
+import { implementationChecked, qaChecked } from './publication/evidence-gates';
+import { draftInstructions, draftSpec, publishVersionedDraft } from './publication/draft-step';
+import { maintenanceStopOf } from './publication/maintenance-stop';
+import { assertCandidateGitDirectories } from './publication/worker-interval';
+import type { MaintenanceCandidateBinding } from '../workers/maintenance-launch';
+import { UNREVIEWED_LINT_ISOLATION, type LintIsolation } from './publication/lint-isolation';
 export const MaintenanceSchema = z.object({ outcome: z.enum(['passed', 'blocked', 'reroute']), approach: ApproachSchema.nullable(), checks: z.array(z.object({ path: z.string(), commit: z.string(), summary: z.string(), kind: z.enum(['checks', 'browser', 'screenshot']), url: z.string() }).strict()), summary: z.string(), ledger: z.string(), blocker: z.string(), receipts: z.array(z.object({ id: z.string(), action: z.string(), target: z.string(), verified: z.boolean(), uncertain: z.boolean(), detail: z.string() }).strict()), candidates: z.array(z.object({ issue: z.number().int().min(0), worktree: z.string(), branch: z.string(), head: z.string(), summary: z.string(), approach: ApproachSchema.nullable() }).strict()) }).strict();
 const SourceReviewSchema = MaintenanceSchema.extend({ findings: sourceFindings });
 export function easternDate(date = new Date()) { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date); }
@@ -31,11 +42,10 @@ export function weeklyDue(lastWeekly: string, date = new Date()) {
         utc.setUTCDate(utc.getUTCDate() - 7);
     return !lastWeekly || lastWeekly < utc.toISOString().slice(0, 10);
 }
-class StageYield extends Error {
-}
 export class GitHubMaintenance {
-    constructor(public store: Store, public agents: Agents, private execute: typeof command = command) { }
-    async verifyCandidate(candidate: MaintenanceResult['candidates'][number]) {
+    constructor(public store: Store, public agents: Agents, public execute: typeof command = command, public lintIsolation: LintIsolation = UNREVIEWED_LINT_ISOLATION) { }
+    async verifyCandidate(candidate: MaintenanceResult['candidates'][number], binding?: MaintenanceCandidateBinding) {
+        if (binding) await assertCandidateGitDirectories(this.execute, binding);
         const root = realpathSync((await this.execute('git', ['rev-parse', '--show-toplevel'], { cwd: candidate.worktree })).trim());
         const primary = realpathSync((await this.execute('git', ['rev-parse', '--show-toplevel'], { cwd: this.store.project.repo })).trim());
         if (root === primary)
@@ -57,7 +67,7 @@ export class GitHubMaintenance {
             throw new Error('Proposal issue identity or state changed');
     }
     async verifyDraft(candidate: MaintenanceResult['candidates'][number]) {
-        const prs = JSON.parse(await command('gh', ['pr', 'list', '--repo', this.store.project.repository, '--head', candidate.branch, '--state', 'open', '--json', 'url,headRefOid,isDraft,closingIssuesReferences', '--limit', '100'], { cwd: this.store.project.repo }));
+        const prs = JSON.parse(await this.execute('gh', ['pr', 'list', '--repo', this.store.project.repository, '--head', candidate.branch, '--state', 'open', '--json', 'url,headRefOid,isDraft,closingIssuesReferences', '--limit', '100'], { cwd: this.store.project.repo }));
         if (prs.length !== 1 || !prs[0].isDraft || prs[0].headRefOid !== candidate.head || !prs[0].closingIssuesReferences.some((i: any) => i.number === candidate.issue))
             throw new Error('Draft PR identity, exact reviewed head or linked closing issue could not be independently verified');
     }
@@ -66,6 +76,8 @@ export class GitHubMaintenance {
         if (!run || run.retirement || !['blocked', 'interrupted'].includes(run.status))
             throw new Error('No interrupted maintenance run matches this request');
         if (reconcileSourceScan(this.store, run)) return run;
+        const settled = await reconcileVersionedRun(this.store, run, this.execute);
+        if (settled) return settled;
         const original = prepareMaintenanceReadback(this.store, run);
         original.assertClaimed();
         const schema = MaintenanceSchema.extend({ coverage: maintenanceCoverageSchema(original.packet) }).strict();
@@ -129,7 +141,7 @@ Return a compact completed/STILL UNFINISHED ledger and candidates=[].`, schema, 
         try {
             const policies = accessibility ? '' : maintenancePolicies(this.store);
             let cursor = 0;
-            const step = async (role: Role, stage: string, instructions: string, readOnly = false, candidates: MaintenanceResult['candidates'] = []) => {
+            const step = async (role: Role, stage: string, instructions: string, readOnly = false, candidates: MaintenanceResult['candidates'] = [], versioned?: VersionedSpec) => {
                 const saved = run.steps[cursor++];
                 if (saved) {
                     if (saved.stage !== stage)
@@ -141,7 +153,9 @@ Return a compact completed/STILL UNFINISHED ledger and candidates=[].`, schema, 
                 run.stage = stage;
                 this.store.emit('maintenance-stage', `${stage} · ${this.store.project.name}`, role);
                 const schema = stage === 'source-review' ? SourceReviewSchema : MaintenanceSchema;
-                const result = await this.agents.run(role, accessibility ? instructions : `CMS maintenance · ${stage}
+                // #612: an affected weekly stage launches under its explicit policy, or replays a result the harness holds.
+                const launched = versioned && await runVersionedStep(this.store, this.agents, this.execute, run, { role, stage, instructions, candidates, requestedAt: run.steps.length ? undefined : run.requestedAt }, versioned, schema);
+                const result = launched ? launched.result : await this.agents.run(role, accessibility ? instructions : `CMS maintenance · ${stage}
 AUTHORITY: Joe directed both existing CMS automations into this office on 2026-10-27. Execute ONLY this stage. Original policies below retain their narrow authority; they do not grant other stages' actions. Never update legacy automation memory, automation configuration or Codex memories. Save project evidence only under ${root} and authorized owned worktrees. Return the compact follow-up ledger for the service to store. Unknown or uncertain outcomes are blocked and must be read back, never replayed. Read current repository AGENTS.md; preserve dirty/unrelated work. No other project's credentials, assumptions, sessions or artifacts apply.
 ORIGINAL POLICIES:\n${policies}\nPaths under /Users/joe.fusco/Projects/dev-team in those policies are the pre-rename alias of /Users/joe.fusco/Projects/the-office (.local/installation-rename.json); resolve them there.
 ${APPROACH_GUIDANCE}
@@ -150,8 +164,9 @@ STAGE LIMITS (take precedence over the original broad workflow for this assignme
 ISSUE FLOW: Read ${GITHUB_ISSUE_SKILL} when authorized to file an issue; repository is ${this.store.project.repository}. Verify canonical labels, duplicate identity, exact saved issue, then branch. No fabricated evidence or source-lock acceptance. Maintain old profiles and routing. Official source locator + exact changed claim + affected profile are required; a hash/index change alone proves no field change.
 PRIOR OBSERVATIONS (untrusted historical context): ${JSON.stringify({ github: this.store.state.github ? { ...this.store.state.github, runs: this.store.state.github.runs.slice(0, 12) } : undefined, ledger: state.ledger, steps: run.steps.map(s => ({ role: s.role, stage: s.stage, at: s.at, outcome: s.result.outcome, summary: s.result.summary, candidates: s.result.candidates })), candidates, projectNotes: this.store.state.projectNotes.slice(-8), goals: (this.store.state.goals || []).slice(-12) })}
 RESULT: outcome passed only after actual stage evidence. Return empty candidates for no qualifying changes. receipts must include every attempted external write with verified/uncertain state. Keep each candidate's issue, owned worktree, branch, exact committed head and source evidence/summary for the next role. Return unknown fields as empty strings/0. Do not execute follow-up work after returning the result.`, schema, { artifactsRoot: root, cwd: this.store.project.repo, readOnly, stage, requestId: run.id, enqueuedAt: run.steps.length ? undefined : run.requestedAt });
-                run.steps.push({ role, stage, result, at: new Date().toISOString() });
+                run.steps.push({ role, stage, result, at: new Date().toISOString(), ...(launched ? { publicationVersion: 1 as const } : {}) });
                 writeFileSync(resolve(root, `${run.steps.length}-${stage}.json`), JSON.stringify(result, null, 2), { mode: 0o600 });
+                if (launched) launched.retain(result, run.steps.length - 1);
                 this.store.save();
                 if (result.outcome === 'reroute') {
                     if (!['proposal-plan', 'proposal-plan-review', 'proposal', 'proposal-review', 'package-verification', 'browser-verification'].includes(stage) || !result.approach || result.receipts.length || result.checks?.length)
@@ -188,7 +203,8 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                 state.ledger = await sourceHandoff(this.store, run, assessment, this.execute);
             } else await step('pm', 'follow-up', cmsFollowUpInstructions({ unverifiedNote: unverifiedPriorRunNote(run), githubProjectUrl: this.store.project.githubProject?.url, repository: this.store.project.repository }));
             if (!accessibility && run.weekly) {
-                const triage = await step('pm', 'vendor-review', VENDOR_REVIEW_INSTRUCTIONS, true);
+                const weekly = weeklyContext(this, run, root, () => cursor);
+                const triage = await step('pm', 'vendor-review', VENDOR_REVIEW_INSTRUCTIONS, true, [], await vendorReviewSpec(weekly));
                 const leftToDelivery = (index: number, checkpoint: 'triage' | 'proposal', issue: number) => {
                     const owned = skipOwnedCandidate(run, { index, checkpoint }, issue, cursor === run.steps.length, () => candidateOwner(this.store.state, holdsFor(this.store.project), issue));
                     if (owned.added) {
@@ -198,7 +214,7 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                     }
                     return !!owned.reason;
                 };
-                for (const [index, candidate] of triage.candidates.entries()) {
+                candidates: for (const [index, candidate] of triage.candidates.entries()) {
                     if (leftToDelivery(index, 'triage', candidate.issue))
                         continue;
                     let approach: WorkApproach = candidate.approach || { plan: 'none', review: 'focused', validation: 'independent-checks', checks: ['Repository-required package checks'], reason: 'Retained CMS workflow until the team supplies an explicit new decision.' };
@@ -211,6 +227,7 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                     };
                     decide(approach, 'pm', 'vendor-review');
                     let planDone = false, planReviewDone = false, changes = 0, built: MaintenanceResult;
+                    const group = new CandidateGroup(weekly, index, candidate, JSON.stringify(triage));
                     const revise = (result: MaintenanceResult, role: Role, stage: string) => {
                         if (++changes > 3)
                             throw new Error('Team approach remains unsettled after three changes');
@@ -218,7 +235,7 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                     };
                     while (true) {
                         if (approach.plan !== 'none' && !planDone) {
-                            const plan = await step('developer', 'proposal-plan', `Write only the selected ${approach.plan} plan for this surface, naming exact files/functions, focused checks, evidence and unresolved questions. Save it in the stage summary/artifact root. No issue, branch, source or remote changes. If inspection changes the approach, use reroute before implementation. Selected approach: ${JSON.stringify(approach)}. Surface: ${JSON.stringify(candidate)}`, true, [candidate]);
+                            const plan = await step('developer', 'proposal-plan', `Write only the selected ${approach.plan} plan for this surface, naming exact files/functions, focused checks, evidence and unresolved questions. Save it in the stage summary/artifact root. No issue, branch, source or remote changes. If inspection changes the approach, use reroute before implementation. Selected approach: ${JSON.stringify(approach)}. Surface: ${JSON.stringify(candidate)}`, true, [candidate], readerSpec(group, 'proposal-plan'));
                             if (plan.outcome === 'reroute') {
                                 revise(plan, 'developer', 'proposal-plan');
                                 continue;
@@ -226,15 +243,18 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                             planDone = true;
                         }
                         if (approach.plan === 'reviewed' && !planReviewDone) {
-                            const review = await step('lead', 'proposal-plan-review', 'Independently review the saved plan for this surface. No code or remote changes. Return blocked with concrete unresolved concerns, passed when ready, or reroute with reason if a different approach is appropriate before implementation.', true, [candidate]);
+                            const review = await step('lead', 'proposal-plan-review', 'Independently review the saved plan for this surface. No code or remote changes. Return blocked with concrete unresolved concerns, passed when ready, or reroute with reason if a different approach is appropriate before implementation.', true, [candidate], readerSpec(group, 'proposal-plan-review'));
                             if (review.outcome === 'reroute') {
                                 revise(review, 'lead', 'proposal-plan-review');
                                 continue;
                             }
                             planReviewDone = true;
                         }
-                        built = await step('developer', 'proposal', `Implement ONLY this evidenced surface as ONE focused proposal. Use the selected approach; no separate plan/review is required unless selected. Inspect source first and use reroute BEFORE any issue creation, branch or code changes if a different route is needed. Read repository instructions and skill, create/reuse one verified issue first, then create/reuse an owned isolated worktree from freshly fetched origin/main. Preserve the primary checkout. Follow canonical issue/branch/wiki requirements and required release:preflight, verify:ci, test:packed and npm pack --dry-run --ignore-scripts checks. Save actual check outputs under the artifact root and return checks tied to the committed head. Lock observations remain proposals. No pushes, PR creation, merge/acceptance/publish yet. Return exactly one candidate with issue and full head. Selected approach: ${JSON.stringify(approach)}. Surface: ${JSON.stringify(candidate)}`, false, [candidate]);
+                        const position = await group.proposalPosition(approach, issue => leftToDelivery(index, 'proposal', issue));
+                        if (position.skipped) continue candidates;
+                        built = await step('developer', 'proposal', position.instructions, false, [candidate], position.spec);
                         if (built.outcome === 'reroute') {
+                            group.assertReroutable();
                             revise(built, 'developer', 'proposal');
                             continue;
                         }
@@ -247,20 +267,21 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                     }
                     if (built.candidates.length !== 1)
                         throw new Error('Proposal did not return exactly one verified candidate');
-                    const proposal = built.candidates[0];
+                    const proposal = group.bind(built);
                     if (leftToDelivery(index, 'proposal', proposal.issue))
                         continue;
                     if (!proposal.issue || !proposal.worktree || !proposal.branch || !/^[a-f0-9]{40}$/.test(proposal.head))
                         throw new Error('Proposal is missing its issue, owned worktree, branch or immutable head');
-                    if (!built.checks?.some(c => (!c.kind || c.kind === 'checks') && c.commit === proposal.head && containedFile(c.path, root)))
+                    if (!implementationChecked(group, built, proposal, root))
                         throw new Error('Actual saved implementation check evidence for this head is missing');
-                    await this.verifyCandidate(proposal);
+                    await this.verifyCandidate(proposal, group.binding);
+                    await group.carryForward(proposal);
                     captureMaintenanceStep(this.store, run, built);
                     let reviewDone = false, qaDone: WorkApproach['validation'] | null = null;
                     while (true) {
                         proposal.approach = approach;
                         if (approach.plan !== 'none' && !planDone) {
-                            const plan = await step('developer', 'proposal-plan', 'Document the newly selected plan against the already committed candidate. No source/remote changes and no repeat implementation. Save exact scope, unresolved questions and selected checks.', true, [proposal]);
+                            const plan = await step('developer', 'proposal-plan', 'Document the newly selected plan against the already committed candidate. No source/remote changes and no repeat implementation. Save exact scope, unresolved questions and selected checks.', true, [proposal], readerSpec(group, 'proposal-plan'));
                             if (plan.outcome === 'reroute') {
                                 revise(plan, 'developer', 'proposal-plan');
                                 continue;
@@ -268,7 +289,7 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                             planDone = true;
                         }
                         if (approach.plan === 'reviewed' && !planReviewDone) {
-                            const review = await step('lead', 'proposal-plan-review', 'Review the newly requested plan against the existing immutable candidate. No source edits, writer replays or remote writes. Block on concrete unresolved concerns; reroute only for an approach correction before effects.', true, [proposal]);
+                            const review = await step('lead', 'proposal-plan-review', 'Review the newly requested plan against the existing immutable candidate. No source edits, writer replays or remote writes. Block on concrete unresolved concerns; reroute only for an approach correction before effects.', true, [proposal], readerSpec(group, 'proposal-plan-review'));
                             if (review.outcome === 'reroute') {
                                 revise(review, 'lead', 'proposal-plan-review');
                                 continue;
@@ -276,7 +297,7 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                             planReviewDone = true;
                         }
                         if (approach.review !== 'none' && !reviewDone) {
-                            const review = await step('lead', 'proposal-review', `${reviewInstructions(approach.review)} READ ONLY independent review of the exact candidate head/diff, official evidence and applicability, older profiles/routing, proposed lock state and checks. Do not edit or accept source-lock changes. Block with concrete findings when necessary. If this review is unnecessary or a different verification approach is needed, return reroute before effects with the reason.`, true, [proposal]);
+                            const review = await step('lead', 'proposal-review', `${reviewInstructions(approach.review)} READ ONLY independent review of the exact candidate head/diff, official evidence and applicability, older profiles/routing, proposed lock state and checks. Do not edit or accept source-lock changes. Block with concrete findings when necessary. If this review is unnecessary or a different verification approach is needed, return reroute before effects with the reason.`, true, [proposal], reviewSpec(group, proposal));
                             if (review.outcome === 'reroute') {
                                 revise(review, 'lead', 'proposal-review');
                                 continue;
@@ -284,24 +305,26 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                             reviewDone = true;
                             if (review.approach)
                                 decide(review.approach, 'lead', 'proposal-review');
-                            await this.verifyCandidate(proposal);
+                            await this.verifyCandidate(proposal, group.binding);
                             captureMaintenanceStep(this.store, run, run.steps[cursor - 1].result);
                         }
                         if (approach.validation !== 'developer-checks' && qaDone !== approach.validation) {
-                            const qa = await step('qa', approach.validation === 'browser' ? 'browser-verification' : 'package-verification', `Independently verify the exact candidate worktree/head using the selected checks: ${JSON.stringify(approach)}. Use package/CLI/API checks for check-based validation, without launching a browser. If browser validation was selected, use actual candidate browser evidence and save browser plus screenshot artifacts with commit and URL; do not invent a deployed application. Return actual saved check outputs with kind/path/commit/summary/url. Missing access or failing checks are blocked, not a reason to silently downgrade. No source edits, remote writes, releases or paid provider actions. Return reroute only for a reasoned scope correction BEFORE executing verification.`, false, [proposal]);
+                            const qaStage = approach.validation === 'browser' ? 'browser-verification' : 'package-verification';
+                            const qa = await step('qa', qaStage, `Independently verify the exact candidate worktree/head using the selected checks: ${JSON.stringify(approach)}. Use package/CLI/API checks for check-based validation, without launching a browser. If browser validation was selected, use actual candidate browser evidence and save browser plus screenshot artifacts with commit and URL; do not invent a deployed application. Return actual saved check outputs with kind/path/commit/summary/url. Missing access or failing checks are blocked, not a reason to silently downgrade. No source edits, remote writes, releases or paid provider actions. Return reroute only for a reasoned scope correction BEFORE executing verification.`, false, [proposal], qaSpec(group, qaStage, proposal, approach.validation === 'browser'));
                             if (qa.outcome === 'reroute') {
                                 revise(qa, 'qa', 'verification');
                                 continue;
                             }
-                            if (!qa.checks?.some(c => (!c.kind || c.kind === 'checks') && c.commit === proposal.head && containedFile(c.path, root)))
+                            const gates = qaChecked(group, qa, proposal, root);
+                            if (!gates.checks)
                                 throw new Error('Independent verification is missing actual saved checks for this head');
                             const verifiedApproach = qa.approach || approach;
-                            if (verifiedApproach.validation === 'browser' && !['browser', 'screenshot'].every(kind => qa.checks?.some(c => c.kind === kind && c.commit === proposal.head && containedFile(c.path, root) && !!c.url)))
+                            if (verifiedApproach.validation === 'browser' && !gates.browser)
                                 throw new Error('Selected browser verification needs real current-head browser and screenshot evidence');
                             if (qa.approach)
                                 decide(qa.approach, 'qa', 'verification');
                             qaDone = approach.validation;
-                            await this.verifyCandidate(proposal);
+                            await this.verifyCandidate(proposal, group.binding);
                             captureMaintenanceStep(this.store, run, run.steps[cursor - 1].result);
                         }
                         if (approach.plan !== 'none' && !planDone || approach.plan === 'reviewed' && !planReviewDone || approach.review !== 'none' && !reviewDone || approach.validation !== 'developer-checks' && qaDone !== approach.validation)
@@ -311,11 +334,12 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                     if ((approach.plan !== 'none' && !planDone) || (approach.plan === 'reviewed' && !planReviewDone))
                         throw new Error('New planning requirements need reconciliation before publication');
                     proposal.approach = approach;
-                    await this.verifyCandidate(proposal);
-                    const published = await step('developer', 'draft-pr', `Verify the same issue/worktree/branch/head, saved implementation checks and the review/QA evidence required by this selected approach: ${JSON.stringify(approach)}. Skipped steps are not passed steps. Re-read origin/main and candidate. Push normally and open ONE canonical issue-linked DRAFT GitHub PR, with official source evidence, applicability, generated output, actual checks, omitted-step rationale, risks and lock-review requirement. Run lint:pr as required and read back exact saved PR/head/draft/body. Add its URL to the linked issue without changing unrelated content and read back. No duplicate PR, non-draft publication, merge, acceptance, tag or release. Return actual receipts and candidate identity.`, false, [proposal]);
+                    await this.verifyCandidate(proposal, group.binding);
+                    const published = await step('developer', 'draft-pr', draftInstructions(proposal, approach), false, [proposal], draftSpec(group, proposal, MaintenanceSchema));
                     if (published.outcome === 'reroute')
                         throw new Error('Draft publication must reconcile effects before changing its route');
-                    await this.verifyDraft(proposal);
+                    if (!await publishVersionedDraft(group, published, proposal, approach, async () => { await this.verifyCandidate(structuredClone(proposal), group.binding); }))
+                        await this.verifyDraft(proposal);
                     captureMaintenanceStep(this.store, run, published);
                 }
                 state.lastWeekly = easternDate();
@@ -332,6 +356,8 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
             }
             run.status = this.store.state.paused ? 'interrupted' : 'blocked';
             run.error = String(e);
+            const stop = maintenanceStopOf(e, new Date().toISOString());
+            if (stop) run.stop = stop;
             this.store.emit('maintenance-blocked', run.error, 'pm');
         }
         finally {

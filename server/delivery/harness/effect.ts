@@ -1,5 +1,5 @@
 import type { Store } from '../../store/store';
-import type { TicketJob } from '../../../src/shared';
+import type { EffectIntent, TicketJob, WorkRef } from '../../../src/shared';
 import type { WriteQualification } from '../../../src/contracts/write-identity';
 import { executeGitHubWrite, reconcileGitHubWrite } from '../../github/identity/write-boundary';
 import { settleNotLanded } from './resend-not-landed';
@@ -62,12 +62,29 @@ export function activeEffectId(store: Store, base: string): string {
     }
 }
 
+/** Who a checked write belongs to: its Effect id base, work reference and attempt. */
+export interface CheckedBinding {
+    base: string;
+    work: WorkRef;
+    attemptId: string;
+    /**
+     * Synchronous, inside the transaction that claims the prepared intent, once a GitHub write's writer checks pass: a
+     * refusal rejects the intent unsent. A maintenance write binds its running scheduler claim and ownership here.
+     */
+    claim?: (intent: Readonly<EffectIntent>) => string | undefined;
+}
+
 /**
  * One durable write with read-back. Uncertain attempts are reconciled by reading, never resent. The one
  * exception is an effect that declares `notLanded`: an absolute write shown not to have landed is sent once more.
  */
 export async function harnessEffect<R>(store: Store, job: Pick<TicketJob, 'id'>, effect: HarnessEffect<R>): Promise<R> {
-    const base = `harness:${job.id}:${effect.key}`;
+    return checkedEffect(store, { base: `harness:${job.id}:${effect.key}`, work: { projectId: store.project.id, kind: 'delivery', id: job.id }, attemptId: job.id }, effect);
+}
+
+/** The checked execution `harnessEffect` uses, for any work reference: read back an attempt, otherwise one guarded write. */
+export async function checkedEffect<R>(store: Store, binding: CheckedBinding, effect: HarnessEffect<R>): Promise<R> {
+    const base = binding.base;
     let id = activeEffectId(store, base);
     const evidence = async (receipt: R | null) => receipt !== null && receipt !== undefined && effect.qualify ? effect.qualify(receipt) : undefined;
     const prior = store.getEffect<R>(id);
@@ -86,9 +103,10 @@ export async function harnessEffect<R>(store: Store, job: Pick<TicketJob, 'id'>,
     await runGuard(effect.guard, id);
     // The writer is selected, and its credential acquired, before the intent exists (`write-boundary.ts`).
     return executeGitHubWrite<Record<string, unknown>, R>(store, {
-        id, work: { projectId: store.project.id, kind: 'delivery', id: job.id }, attemptId: job.id,
+        id, work: binding.work, attemptId: binding.attemptId,
         operation: effect.operation, target: effect.target, authorization: 'office-harness',
         payload: effect.payload, expectedState: { key: effect.key },
+        ...(binding.claim ? { claim: binding.claim } : {}),
         preflight: async () => { await runGuard(effect.guard, id); },
         dispatch: () => effect.dispatch(),
         verify: async receipt => {

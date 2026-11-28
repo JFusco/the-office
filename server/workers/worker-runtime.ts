@@ -45,6 +45,9 @@ import { catalogLine } from '../knowledge/lookup/catalog-line';
 import { persistReaderAnalysis } from './reader-analysis';
 import { handoffGuidance } from './handoff-guidance';
 import { parseWorkerResult } from './parse-result';
+import { HOST_ENVIRONMENT, type QualificationEnvironment } from './launch-qualification';
+import { maintenanceAssignment, qualifiedLaunch, type MaintenanceLaunchInput } from './maintenance-runtime';
+import { MAINTENANCE_IMPLEMENTER_TEXT, MAINTENANCE_OWNERSHIP_TEXT, maintenanceIdentityText, maintenancePolicyText } from './maintenance-assignment-text';
 export class WorkerRuntime {
     knowledgeContext?:import('../knowledge/context').KnowledgeContext;
     active = new Map<Role, AbortController>();
@@ -53,6 +56,8 @@ export class WorkerRuntime {
         started: number;
         timer: ReturnType<typeof setInterval>;
     }>();
+    /** Host facts a qualified maintenance launch is compared with; injectable so tests never read the machine. */
+    qualification: QualificationEnvironment = HOST_ENVIRONMENT;
     constructor(protected store: Store, protected execute: typeof command = command, capacity?: OfficeCapacity) {
         if (capacity)
             this.active = capacity.active;
@@ -75,6 +80,8 @@ export class WorkerRuntime {
         enqueuedAt?: string;
         artifactsRoot?: string;
         officeQA?: boolean;
+        /** A #612 maintenance launch, refused before it starts unless a qualification record matches (`maintenance-runtime.ts`). */
+        maintenance?: MaintenanceLaunchInput;
     } = {}) {
         if (this.active.has(role) || this.active.size >= 3)
             throw new Error('Agent capacity is occupied');
@@ -98,14 +105,17 @@ export class WorkerRuntime {
             (!deliverySubject.request || deliverySubject.request.action === 'reconcile-pr-metadata' ||
                 deliverySubject.request.action === 'reconcile-base-update' && opts.stage === 'stopped-base-update-audit') ? deliverySubject.job : undefined;
         const registeredDelivery = registeredJob && assessDeliveryAuthority(this.store, registeredJob).authorized;
-        task += `\nEFFECT RECEIPTS: Preserve schema validation and approval rejections proven to occur before execution in diagnostic evidence. They are not unverified writes. A transport failure after dispatch is an uncertain mutation and remains blocked until independently reconciled. Never infer non-execution from a negative search.\nCURRENT IT DIAGNOSTICS (advisory observations scoped to this assignment; history and retry budgets are retained evidence, not present faults or authority. Preserve actual ownership, provider, hold and effect gates; stale IT history alone is not a dispatch blocker or permission for a new IT check): ${JSON.stringify(assignmentDiagnostics(this.store, { role, ticket: opts.ticket, requestId: opts.requestId }))}\n${registeredDelivery ? 'DELIVERY OWNERSHIP: The harness verified this assignment against its registered delivery claim and current holds. Optional chat context may be unavailable; that does not require exhaustive chat inspection or a claim of complete visibility. Preserve actual known competing writers, human holds, private candidate identity, exact source/head and provider fences. Do not probe native Codex runtimes, create a daemon, change provider configuration or infer source acceptance from this assignment. The harness alone authorizes and records publication, merges and recovery effects.' : `OFFICE SESSION BRIDGE (read only): GET http://127.0.0.1:${process.env.OFFICE_PORT || 4318}/api/sessions?project=${this.store.project.id}&ticket=${encodeURIComponent(opts.ticket || '')}&requestId=${encodeURIComponent(opts.requestId || '')}. It reports fresh native Codex/Claude and Office identities, including outside worktrees. Read it immediately before starting new source work. ${this.store.project.provider === 'azure' ? 'Missing or expired coverage is unavailable context, not a blocker: the Office claim and holds decide who works this ticket, and only a positively identified competing writer stops the work.' : 'Missing/expired coverage blocks a claim that ownership is clear.'} Read retained conversation evidence for earlier user decisions and assistant reports, noting role, omissions and truncation; verify it against owning sources. Retained conversation scope never establishes current ownership. Use explicit activity and current-turn cross-repository issue/PR context for Codex and Claude; a loaded descriptor alone does not prove an active turn. Existing PR review and authorized merge do not require implementation ownership clearance. This endpoint cannot resume, interrupt, or message sessions.`}`;
+        const maintenance = opts.maintenance;
+        task += `\nEFFECT RECEIPTS: Preserve schema validation and approval rejections proven to occur before execution in diagnostic evidence. They are not unverified writes. A transport failure after dispatch is an uncertain mutation and remains blocked until independently reconciled. Never infer non-execution from a negative search.\nCURRENT IT DIAGNOSTICS (advisory observations scoped to this assignment; history and retry budgets are retained evidence, not present faults or authority. Preserve actual ownership, provider, hold and effect gates; stale IT history alone is not a dispatch blocker or permission for a new IT check): ${JSON.stringify(assignmentDiagnostics(this.store, { role, ticket: opts.ticket, requestId: opts.requestId }))}\n${maintenance ? MAINTENANCE_OWNERSHIP_TEXT : registeredDelivery ?'DELIVERY OWNERSHIP: The harness verified this assignment against its registered delivery claim and current holds. Optional chat context may be unavailable; that does not require exhaustive chat inspection or a claim of complete visibility. Preserve actual known competing writers, human holds, private candidate identity, exact source/head and provider fences. Do not probe native Codex runtimes, create a daemon, change provider configuration or infer source acceptance from this assignment. The harness alone authorizes and records publication, merges and recovery effects.' : `OFFICE SESSION BRIDGE (read only): GET http://127.0.0.1:${process.env.OFFICE_PORT || 4318}/api/sessions?project=${this.store.project.id}&ticket=${encodeURIComponent(opts.ticket || '')}&requestId=${encodeURIComponent(opts.requestId || '')}. It reports fresh native Codex/Claude and Office identities, including outside worktrees. Read it immediately before starting new source work. ${this.store.project.provider === 'azure' ? 'Missing or expired coverage is unavailable context, not a blocker: the Office claim and holds decide who works this ticket, and only a positively identified competing writer stops the work.' : 'Missing/expired coverage blocks a claim that ownership is clear.'} Read retained conversation evidence for earlier user decisions and assistant reports, noting role, omissions and truncation; verify it against owning sources. Retained conversation scope never establishes current ownership. Use explicit activity and current-turn cross-repository issue/PR context for Codex and Claude; a loaded descriptor alone does not prove an active turn. Existing PR review and authorized merge do not require implementation ownership clearance. This endpoint cannot resume, interrupt, or message sessions.`}`;
         const lessons = selectLessons(this.store, { stage: opts.stage, paths: opts.featureContext?.baseline.scope });
         if (lessons.text) task += `\n${lessons.text}`;
         task += `\n${personaContext(role)}`;
         const profile = workerProfile(opts.stage || 'assignment', !!opts.readOnly, opts.slackSend);
-        opts = { ...opts, cwd: opts.cwd || this.store.project.repo, readOnly: profile.readOnly };
+        // The historical profile mapping stays; a maintenance policy also fixes where the worker runs.
+        opts = { ...opts, cwd: maintenance ? maintenance.policy.cwd : opts.cwd || this.store.project.repo, readOnly: profile.readOnly };
         assertWorkerLane(role, opts.stage || 'assignment', profile.readOnly, assignment);
         task += `\nCAPABILITY PROFILE: ${JSON.stringify(profile)}. Native stages retain their named required workflows. Restricted readers may not perform writes; save plans/reviews in the structured result for the harness to persist.`;
+        if (maintenance) task += `\n${maintenancePolicyText(maintenance.policy, maintenance.scratch)}`;
         const jsonSchema = z.toJSONSchema(schema, { target: 'draft-7' });
         if (role !== 'developer')
             assertStrictOutputSchema(jsonSchema);
@@ -116,10 +126,11 @@ export class WorkerRuntime {
         mkdirSync(dir, { recursive: true, mode: 0o700 });
         let evidence:EvidenceSelection={text:'',selected:[],snapshot:null,technicalStatus:'unavailable'};
         const identityPath = resolve(dir, 'assignment-identity.json');
-        task += `\nACTUAL ASSIGNMENT IDENTITY: The harness supplies ${identityPath} with this assignment's provider session, project, request and role. Before a native Brain claim, read it and match the actual thread; missing or mismatched identity blocks that claim. Never guess an author ID. Non-Brain work must not claim Brain maintenance.`;
-        const schemaPath = resolve(dir, 'schema.json');
-        writeFileSync(schemaPath, JSON.stringify(jsonSchema));
-        task += `\n${handoffGuidance(resolve(dir, 'assignment.json'), schemaPath)}`;
+        task += maintenance ? `\n${maintenanceIdentityText({ session: role === 'developer' ? id : 'assigned at thread start', projectId: this.store.project.id, requestId: opts.requestId || '', role })}`
+            : `\nACTUAL ASSIGNMENT IDENTITY: The harness supplies ${identityPath} with this assignment's provider session, project, request and role. Before a native Brain claim, read it and match the actual thread; missing or mismatched identity blocks that claim. Never guess an author ID. Non-Brain work must not claim Brain maintenance.`;
+        const schemaPath = resolve(dir, 'schema.json'), schemaText = JSON.stringify(jsonSchema);
+        writeFileSync(schemaPath, schemaText);
+        task += `\n${handoffGuidance(resolve(dir, 'assignment.json'), schemaPath, !!maintenance)}`;
         const claude = role === 'developer', stream = new ClaudeStream();
         let completionSaved = false;
         const retainClaudeCompletion = () => {
@@ -139,7 +150,7 @@ export class WorkerRuntime {
         // Codex assigns its identity in thread.started below.
         if (claude) saveIdentity(id);
         const continuation = this.store.state.coordination?.continuations?.find(item => item.runId === opts.requestId || item.id === claim?.work.id);
-        writeFileSync(resolve(dir, 'assignment.json'), JSON.stringify({ id, work: claim?.work || { projectId: this.store.project.id, kind: 'conversation', id: opts.requestId || id }, claimId: claim?.id || null, lane: assignment?.lane || claim?.lane || null, stage: opts.stage || 'assignment', role, attempt: this.store.state.workLog?.filter(work => work.requestId === opts.requestId && work.stage === opts.stage).length || 0, expectedVersion: String(this.store.state.revision), feature: opts.featureContext || null, scope: { repository: this.store.project.repository, worktree: opts.cwd, artifacts: dir }, profile: profile.name, timing: { enqueuedAt: queueTiming?.enqueuedAt || opts.enqueuedAt || startedAt, readyAt: queueTiming?.readyAt || claim?.claimedAt || startedAt, claimedAt: queueTiming?.claimedAt || claim?.claimedAt || startedAt }, original: continuation?.original || null, parent: continuation?.repair || null }), { mode: 0o600 });
+        writeFileSync(resolve(dir, 'assignment.json'), JSON.stringify({ id, work: claim?.work || { projectId: this.store.project.id, kind: 'conversation', id: opts.requestId || id }, claimId: claim?.id || null, lane: assignment?.lane || claim?.lane || null, stage: opts.stage || 'assignment', role, attempt: this.store.state.workLog?.filter(work => work.requestId === opts.requestId && work.stage === opts.stage).length || 0, expectedVersion: String(this.store.state.revision), feature: opts.featureContext || null, scope: { repository: this.store.project.repository, worktree: opts.cwd, artifacts: dir }, profile: profile.name, timing: { enqueuedAt: queueTiming?.enqueuedAt || opts.enqueuedAt || startedAt, readyAt: queueTiming?.readyAt || claim?.claimedAt || startedAt, claimedAt: queueTiming?.claimedAt || claim?.claimedAt || startedAt }, original: continuation?.original || null, parent: continuation?.repair || null, ...maintenanceAssignment(maintenance, claude) }), { mode: 0o600 });
         const activity = workerActivity(role, opts.stage || 'assignment', this.store.project.name, opts.ticket);
         this.store.agent(role, { activity: 'working', task: activity, ticket: opts.ticket || '', sessionId: claude ? id : '', provider: claude ? 'claude' : 'codex', model: claude ? DEVELOPER_MODEL : '', effort: claude ? DEVELOPER_EFFORT : '', observedModel: '' });
         writeFileSync(resolve(dir, 'provider.json'), JSON.stringify({ project: this.store.project.id, repository: this.store.project.repository, provider: claude ? 'claude' : 'codex', model: claude ? DEVELOPER_MODEL : null, effort: claude ? DEVELOPER_EFFORT : null, session: claude ? id : null, role, readOnly: !!opts.readOnly }, null, 2), { mode: 0o600 });
@@ -177,27 +188,33 @@ export class WorkerRuntime {
                 this.store.agent(role, { model: route.model, effort: route.effort });
                 this.store.checkpointWork(id, this.store.clock.monotonic() - started, { model: route.model, effort: route.effort, requestedModel: route.model, requestedEffort: route.effort });
             }
-            const args = claude ? claudeArguments(jsonSchema, id, !!opts.readOnly, [opts.cwd || ROOT, this.store.project.provider === 'azure' ? ROOT : this.store.dataRoot, readingProject.repo, ...(this.store.project.provider === 'azure' ? [SKILLS.jira, SKILLS.qa] : [dirname(GITHUB_ISSUE_SKILL)])], opts.resumeSession) : codexArguments(schemaPath, opts.cwd || ROOT, !!opts.readOnly, route!);
-            const desktopArguments = slackDesktopArguments(claude ? 'claude' : 'codex', profile.name);
-            args.push(...desktopArguments);
-            args.push(...codexNotifyArguments(claude ? 'claude' : 'codex'));
-            if (role === 'knowledge') args.push('-c', 'web_search="disabled"');
-            if (!claude)
-                args.push('-');
-            if (!claude && !opts.readOnly)
+            // A qualified maintenance launch is built from its template and admitted by its record before anything starts.
+            const invocation = maintenance && qualifiedLaunch({ store: this.store, dir, id, stage: opts.stage || 'assignment', claude, maintenance, schema: schemaText, schemaPath, route: route ?? undefined, environment: this.qualification });
+            const args = invocation ? invocation.args : claude ? claudeArguments(jsonSchema, id, !!opts.readOnly, [opts.cwd || ROOT, this.store.project.provider === 'azure' ? ROOT : this.store.dataRoot, readingProject.repo, ...(this.store.project.provider === 'azure' ? [SKILLS.jira, SKILLS.qa] : [dirname(GITHUB_ISSUE_SKILL)])], opts.resumeSession) : codexArguments(schemaPath, opts.cwd || ROOT, !!opts.readOnly, route!);
+            const desktopArguments = invocation ? [] : slackDesktopArguments(claude ? 'claude' : 'codex', profile.name);
+            if (!invocation) {
+                args.push(...desktopArguments);
+                args.push(...codexNotifyArguments(claude ? 'claude' : 'codex'));
+                if (role === 'knowledge') args.push('-c', 'web_search="disabled"');
+                if (!claude)
+                    args.push('-');
+            }
+            if (!claude && !opts.readOnly && !invocation)
                 task += `\nCOMPLETION CHECKPOINT: After all authorized work and read-backs are finished, save the exact complete JSON response matching the provided output schema at ${resolve(dir, 'completed-output.json')}, then return that same compact JSON. This lets the Office recover a final response output limit without repeating any actions. Do not save an incomplete or unverified result.`;
-            if(this.knowledgeContext&&lessonPurpose(opts.stage,this.store.project.provider)) {
+            if(this.knowledgeContext&&lessonPurpose(opts.stage,this.store.project.provider)&&!invocation) {
                 const issued=assignmentLookups.issue({id,context:this.knowledgeContext,store:this.store,dir,stage:opts.stage||'assignment',subject:assignmentSubject(this.store,opts.requestId,opts.ticket,opts.featureContext?.id),claimId:claim?.id,snapshot:evidence.snapshot,active:()=>this.active.get(role)===controller&&!controller.signal.aborted});
                 lookup=issued;task+=`\n${issued.instructions}\n${catalogLine(this.store.state.knowledge,lessons)}`;
             }
-            const assignment = claude ? `${task}\nIMPLEMENTER: Use the pinned Opus 5.5 model. Do not launch nested agent/model processes or switch models. Follow the same stage gates and scoped authorization. Use native git/Azure CLI and TWG commands as available; unavailable authentication or tools are blockers. Do not treat a provider failure as permission to replay an uncertain write. ${opts.readOnly ? 'This assignment is read-only: do not change files or external services.' : ''}` : task;
+            const assignment = claude && invocation ? `${task}\n${MAINTENANCE_IMPLEMENTER_TEXT} ${opts.readOnly ? 'This assignment is read-only: do not change files or external services.' : ''}` : claude ? `${task}\nIMPLEMENTER: Use the pinned Opus 5.5 model. Do not launch nested agent/model processes or switch models. Follow the same stage gates and scoped authorization. Use native git/Azure CLI and TWG commands as available; unavailable authentication or tools are blockers. Do not treat a provider failure as permission to replay an uncertain write. ${opts.readOnly ? 'This assignment is read-only: do not change files or external services.' : ''}` : task;
             const environment = candidateWorkspaceEnvironment(this.store.dataRoot, this.store.state.coordination?.jobs?.find(job => job.id === opts.requestId), opts.cwd || ROOT);
             const launchPolicy = workerLaunchPolicy(profile, opts.stage || 'assignment', !!opts.slackSend, handsOff(this.store));
             if (!retainLaunchPolicy(dir, { version: 1, workerId: id, stage: opts.stage || 'assignment', program: claude ? 'claude' : 'codex', profile: { name: profile.name, readOnly: profile.readOnly }, effective: launchPolicy, ...(desktopArguments.length ? { desktopToolsDisabled: true as const } : {}), workspaceRoot: environment?.NPM_CONFIG_WORKSPACE_DIR, at: this.store.clock.now().toISOString() }))
                 this.store.emit('worker-diagnostic-unavailable', 'Worker launch-policy diagnostic could not be retained; execution policy unchanged.', role, opts.ticket);
             if(this.knowledgeContext)assertBriefingScope(this.knowledgeContext,this.store.project.id,lessons);
             if (registeredJob) requireDeliveryAuthority(this.store, registeredJob);
-            const raw = await this.execute(claude ? 'claude' : 'codex', args, { ...launchPolicy, ...(environment ? { env: environment } : {}), cwd: opts.cwd || ROOT, input: opts.slackSend ? `${assignment}
+            // The logical provider stays the program for runner selection, receipts and failure classification; a
+            // qualified maintenance launch starts its exact pinned executable from its bound cwd.
+            const raw = await this.execute(claude ? 'claude' : 'codex', args, { ...launchPolicy, ...(environment ? { env: environment } : {}), cwd: invocation ? invocation.spawnCwd : opts.cwd || ROOT, ...(invocation ? { executablePath: invocation.executablePath } : {}), input: invocation ? assignment : opts.slackSend ? `${assignment}
 EXECUTION: Filesystem remains read-only. The sole permitted external mutation is the exact one Slack message authorized above, using the connected Slack send tool. No other writes, retries, or configuration changes.` : opts.readOnly && !claude ? `${assignment}
 READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may require network access outside the default sandbox. Use the normal per-command approval request for the exact read command and endpoint; automatic review handles that request. Do not change sandbox/configuration, enable unrestricted access, write files, or request a mutation during this read-only assignment. A rejected approval remains a blocker. Do not repeat denied provider operations or request broader permissions. ${opts.stage === 'github-lead-pr' ? 'For GitHub readiness, use the verified native policy packet in this handoff. When it proves the target is unprotected and no rulesets exist, an earlier connector denial for the unused administrative protection endpoint is retained as a diagnostic; it does not invalidate the successful permitted policy reads. Missing required policy evidence still blocks.' : 'A provider permission denial remains a blocker.'}` : assignment, timeout: opts.timeout ?? 45 * 60 * 1000, inactivityTimeout: opts.inactivityTimeout, interruptFirst: claude, signal: controller.signal, onLifecycle: diagnostic => { if (!retainLifecycle(dir, diagnostic)) this.store.emit('worker-diagnostic-unavailable', 'Worker lifecycle diagnostic could not be retained; execution outcome unchanged.', role, opts.ticket); }, onStragglersTerminated: group => this.store.emit('activity', `Stopped leftover helper processes (group ${group}) after a clean exit.`, role, opts.ticket), onSpawn: pid => { this.store.checkpointWork(id, this.store.clock.monotonic() - started, { processId: pid }); }, onLine: line => {
                     try {
@@ -231,7 +248,7 @@ READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may req
                     }
                     catch { }
                 } }).catch(error => {
-                const recovered = !claude && !opts.readOnly && !(TIMED_OUT_WRITER.test(String(error)) && actionsInFlight > 0) ? completedOutput(dir, error, schema) : undefined;
+                const recovered = !claude && !opts.readOnly && !invocation && !(TIMED_OUT_WRITER.test(String(error)) && actionsInFlight > 0) ? completedOutput(dir, error, schema) : undefined;
                 if (recovered === undefined)
                     throw error;
                 writeFileSync(resolve(dir, 'output-error.json'), JSON.stringify({ error: sanitize(String(error)), recoveredFrom: 'completed-output.json', at: new Date().toISOString() }));

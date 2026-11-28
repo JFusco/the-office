@@ -26,11 +26,15 @@ async function readCandidate(execute: Execute, worktree: string) {
     return { head: await read('rev-parse', 'HEAD'), branch: await read('branch', '--show-current'), dirty: await read('status', '--porcelain=v1', '--untracked-files=all') };
 }
 
+/** The durable record a candidate's owner keeps: a delivery job, or a maintenance run's worktree intent (#612). */
+export type CandidateRecord = Pick<TicketJob, 'key' | 'branch' | 'worktree' | 'candidateBase' | 'head'>;
+
 /**
  * Creates (or verifiably reuses) the isolated worktree for this job before Alex starts.
- * Never resets, adopts an unrelated path, or reuses a dirty tree.
+ * Never resets, adopts an unrelated path, or reuses a dirty tree. A maintenance owner runs no dependency
+ * install here: its setup runs inside the editor's qualified boundary instead.
  */
-export async function createCandidate(store: Store, execute: Execute, job: TicketJob, issue: { number: number; title: string }, assertCurrent: () => void): Promise<{ branch: string; worktree: string; base: string; reused: boolean }> {
+export async function createCandidate(store: Store, execute: Execute, job: CandidateRecord, issue: { number: number; title: string }, assertCurrent: () => void, options: { install?: boolean } = {}): Promise<{ branch: string; worktree: string; base: string; reused: boolean }> {
     const repo = store.project.repo, target = store.project.target;
     if (job.worktree && job.branch && !existsSync(job.worktree) && !job.head) {
         assertCurrent();
@@ -71,7 +75,7 @@ export async function createCandidate(store: Store, execute: Execute, job: Ticke
         throw new Error('Created candidate read-back does not match the fetched target');
     // Advisory: the developer can still install; a failed seed never blocks the candidate.
     let authorityLost = false;
-    await installDependencies(execute, identity.worktree, {
+    if (options.install !== false) await installDependencies(execute, identity.worktree, {
         timeout: 10 * 60000,
         beforeInstall: () => {
             try { assertCurrent(); }
