@@ -1774,8 +1774,15 @@
       "label": "Refuse a `[skip release]` commit that changes the npm package",
       "type": "journal",
       "aliases": [],
-      "githubRefs": [],
-      "bytes": 3845,
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 617,
+          "url": "https://github.com/jfusco/the-office/issues/617"
+        }
+      ],
+      "bytes": 3962,
       "degree": 2,
       "x": -0.947203,
       "y": -0.320634,

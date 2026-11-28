@@ -1,6 +1,8 @@
 ---
 topics: [delivery-and-recovery]
 plans: [2026-11-27-issue-617-refuse-marked-commits-that-change-the-npm-package-f1580887e5.md]
+issue: 'https://github.com/jfusco/the-office/issues/617'
+issues: ['https://github.com/jfusco/the-office/issues/617']
 ---
 
 # Refuse a `[skip release]` commit that changes the npm package
