@@ -13,6 +13,8 @@ import {GitHubMaintenance} from '../../../server/maintenance/maintenance';
 import {assertStrictOutputSchema} from '../../../server/workers/structured-output';
 import {artifact} from '../../../server/store/readback-evidence';
 const fixtures:{root:string;store:Store}[]=[];
+const launchRecord=(workerId:string,stage:string,policy:string,cwd:string)=>({workerId,stage,policy,cwd,
+ executable:{path:'/cli',realpath:'/cli',version:'1',sha256:'a'.repeat(64)},recordSha256:'b'.repeat(64),args:['exec'],at:'2026-11-28T00:00:00Z'});
 afterEach(()=>{vi.restoreAllMocks();for(const f of fixtures.splice(0)){f.store.close();rmSync(f.root,{recursive:true,force:true});}});
 function fixture({projectId='brain',stage='brain-maintenance',claimStage=stage,readOnly=false}:{projectId?:string;stage?:string;claimStage?:string;readOnly?:boolean}={}){
  const root=mkdtempSync(resolve(tmpdir(),'office-maint-readback-')),store=new Store(':memory:',{...projectById(projectId),repo:root},resolve(root,'office'));fixtures.push({root,store});
@@ -179,4 +181,68 @@ test('historical unaccepted receipt missing detail remains raw without schema de
  const f=fixture(),checkpoint=JSON.parse(readFileSync(resolve(f.dir,'completed-output.json'),'utf8'));delete checkpoint.receipts[0].detail;f.put('completed-output.json',checkpoint);
  const p=f.prepare().packet;expect(p.receipts[0].receipt).toEqual(checkpoint.receipts[0]);expect(p.receipts[0].receipt).not.toHaveProperty('detail');
  expect(p.checkpointMatchesNative).toBe(false);expect(p.receipts[1].receipt).toHaveProperty('detail');expect(f.work.status).toBe('failed');
+});
+test('an interrupted versioned checks worker is read back bound to its candidate while its native session shows its recorded scratch',()=>{
+ const checks=()=>{
+  const f=fixture({projectId:'cms-field-vocabulary',stage:'package-verification'}),candidate=resolve(f.root,'candidate'),scratch=resolve(f.root,'scratch-1');mkdirSync(candidate);mkdirSync(scratch);
+  f.run.publication={version:1,evidence:[],candidates:[{index:0,key:'k',candidate:{worktree:candidate}}]};
+  const assignment=JSON.parse(readFileSync(resolve(f.dir,'assignment.json'),'utf8'));
+  f.put('assignment.json',{...assignment,scope:{...assignment.scope,worktree:candidate},maintenancePolicy:{version:1,kind:'checks',browser:false,cwd:candidate,id:'codex-checks',scratch}});
+  f.put('maintenance-launch.json',launchRecord(f.work.id,f.work.stage,'codex-checks',scratch));
+  f.records[0].payload.cwd=scratch;f.nativeSave();
+  return {f,candidate,scratch};
+ };
+ const ok=checks(),proof=ok.f.prepare();expect(proof.packet.native.file.path).toBe(ok.f.nativePath);
+ expect(proof.packet.files.map(file=>file.path)).toContain(resolve(ok.f.dir,'maintenance-launch.json'));
+ ok.f.put('maintenance-launch.json',{...launchRecord(ok.f.work.id,ok.f.work.stage,'codex-checks',ok.scratch),recordSha256:'c'.repeat(64)});
+ expect(()=>ok.f.owned(proof.assertCurrent)).toThrow(/evidence changed/);
+ const missing=checks();unlinkSync(resolve(missing.f.dir,'maintenance-launch.json'));expect(()=>missing.f.prepare()).toThrow(/maintenance-launch.json missing/);
+ const malformed=checks();malformed.f.put('maintenance-launch.json',{cwd:malformed.scratch});expect(()=>malformed.f.prepare()).toThrow(/missing or malformed/);
+ const foreign=checks();foreign.f.put('maintenance-launch.json',launchRecord('other',foreign.f.work.stage,'codex-checks',foreign.scratch));expect(()=>foreign.f.prepare()).toThrow(/another worker/);
+ // The session recorded in the candidate instead of the scratch, or a launch record naming another scratch, is a mismatch.
+ const candidateCwd=checks();candidateCwd.f.records[0].payload.cwd=candidateCwd.candidate;candidateCwd.f.nativeSave();expect(()=>candidateCwd.f.prepare()).toThrow(/native session mismatch/);
+ const otherScratch=checks();otherScratch.f.put('maintenance-launch.json',launchRecord(otherScratch.f.work.id,otherScratch.f.work.stage,'codex-checks',resolve(otherScratch.f.root,'scratch-2')));expect(()=>otherScratch.f.prepare()).toThrow(/another cwd/);
+ const otherCandidate=checks();const a=JSON.parse(readFileSync(resolve(otherCandidate.f.dir,'assignment.json'),'utf8'));
+ otherCandidate.f.put('assignment.json',{...a,scope:{...a.scope,worktree:resolve(otherCandidate.f.root,'elsewhere')}});expect(()=>otherCandidate.f.prepare()).toThrow(/assignment\/capability\/session mismatch/);
+});
+
+test.each(['proposal','proposal-issue'])('a completed %s worker with no saved maintenance result uses its original native read-back',async stage=>{
+ const f=fixture({projectId:'cms-field-vocabulary',stage,readOnly:stage==='proposal-issue'}),prepare=readback.prepareMaintenanceReadback;
+ vi.spyOn(readback,'prepareMaintenanceReadback').mockImplementation((s,r)=>prepare(s,r,f.roots));
+ f.run.stop={kind:'authority',at:f.work.endedAt};
+ f.run.steps=[];
+ Object.assign(f.work,{role:'developer',provider:'claude',sessionId:f.work.id,status:'completed',executionStatus:'completed'});
+ const assignment=JSON.parse(readFileSync(resolve(f.dir,'assignment.json'),'utf8'));
+ const decision={outcome:'adopt',issue:7,title:'',body:'',labels:[],identity:{source:'s',locator:'l',change:'c',profile:'p'},approach:null,summary:'Existing issue',blocker:''};
+ const result={outcome:'passed',approach:null,checks:[],summary:'Completed provider execution',ledger:'Unfinished',blocker:'',receipts:[],candidates:[]};
+ if(stage==='proposal-issue'){
+  assignment.maintenancePolicy={id:'claude-reader',version:1,kind:'reader',cwd:f.root,scratch:null};
+  f.put('maintenance-launch.json',launchRecord(f.work.id,stage,'claude-reader',f.root));
+ }
+ f.put('assignment.json',{...assignment,role:'developer'});
+ f.put('assignment-identity.json',{attemptId:f.work.id,requestId:f.run.id,projectId:f.store.project.id,repository:f.store.project.repository,role:'developer',threadId:f.work.sessionId});
+ f.put('provider.json',{project:f.store.project.id,repository:f.store.project.repository,provider:'claude',role:'developer',readOnly:stage==='proposal-issue',session:f.work.sessionId});
+ f.put('result.json',{session:f.work.sessionId,provider:'claude',result:stage==='proposal-issue'?decision:result});
+ for(const file of ['error.json','completed-output.json'])unlinkSync(resolve(f.dir,file));
+ const nativeDir=resolve(f.roots.claude,f.root.replace(/[^a-zA-Z0-9-]/g,'-'));
+ mkdirSync(nativeDir,{recursive:true});
+ const native=[{type:'tool_use',id:'read-original',name:'Read',input:{file_path:'README.md'}},{type:'tool_result',tool_use_id:'read-original',content:'fixture'}]
+  .map(content=>({sessionId:f.work.sessionId,cwd:f.root,message:{content:[content]}}));
+ writeFileSync(resolve(nativeDir,`${f.work.sessionId}.jsonl`),native.map(record=>JSON.stringify(record)).join('\n'));
+ // A subsequent refusal did not start a process and cannot replace the unresolved original worker.
+ f.store.state.workLog!.push({...f.work,id:'refused',processId:undefined,sessionId:'refused',executionStatus:undefined});
+ const agents={run:vi.fn(async(_role,_prompt,schema,options)=>{
+  expect(f.run.status).toBe('blocked');
+  expect(options).toMatchObject({readOnly:true,stage:'maintenance-readback'});
+  const {packet}=f.prepare();
+  expect(packet.originalWorkId).toBe(f.work.id);
+  expect(packet.calls.map(call=>call.id)).toEqual(['read-original']);
+  expect(packet.receipts).toEqual([]);
+  return schema.parse({...result,coverage:passed(packet)});
+ })};
+ const execute=vi.fn();
+ await f.owned(()=>new GitHubMaintenance(f.store,agents as any,execute as any).reconcile(f.run.id));
+ expect(agents.run).toHaveBeenCalledTimes(1);
+ expect(f.run.status).toBe('reconciled');
+ expect(execute).not.toHaveBeenCalled();
 });

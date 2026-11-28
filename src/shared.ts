@@ -611,7 +611,19 @@ export interface MaintenanceRun {
         status: 'queued' | 'working' | 'completed' | 'blocked' | 'interrupted';
         detail: string;
         issue?: number;
+        /** Harness-written on a follow-up whose issue and board writes the harness performs through Effects (#612). */
+        publicationVersion?: 1;
+        /** The typed cause of a stopped versioned follow-up. */
+        stop?: import('./contracts/work').StopReason & { qualification?: MaintenanceQualificationStop };
+        /** The read-only diagnosis, persisted before any issue or board work. */
+        diagnosis?: BrainFollowupDiagnosis;
+        /** The harness's verified routing of the repair, written as each part settles. */
+        routing?: BrainFollowupRouting;
     };
+    /** Harness-owned publication progress of a versioned weekly CMS run (#612); never part of a worker's saved result. */
+    publication?: MaintenancePublication;
+    /** The typed cause of a stopped versioned run, surfaced through the run's existing stop detail (`error`). */
+    stop?: import('./contracts/work').StopReason & { qualification?: MaintenanceQualificationStop };
     readbackRetry?: ReadRetry;
     id: string;
     requestedAt: string;
@@ -626,11 +638,51 @@ export interface MaintenanceRun {
         stage: string;
         result: MaintenanceResult;
         at: string;
+        /** Harness-written when the step ran under the #612 contract: content only, published by the harness. Absent on older steps. */
+        publicationVersion?: 1;
     }[];
     decisions?: ApproachDecision[];
     /** Candidates left to the delivery pipeline because their issue is held or has an unsettled delivery job. */
     skippedCandidates?: { index: number; checkpoint: 'triage' | 'proposal'; issue: number; reason: string; at: string }[];
 }
+/** Which qualification a refused maintenance launch needed, for which stage, and what did not match. */
+export interface MaintenanceQualificationStop { stage: string; qualification: string; mismatch: string }
+/** A check output a versioned worker reported, copied by the harness from its private scratch into the run's directory. */
+export interface RetainedCheck { kind: 'checks' | 'browser' | 'screenshot'; commit: string; url: string; summary: string; source: string; path: string; sha256: string }
+export interface RetainedEvidence { step: number; stage: string; workerId: string; issue: number; branch: string; head: string; checks: RetainedCheck[] }
+/** The push hook state a candidate is published against: read from the fetched target before any editing. */
+export interface PushHookBaseline { destinations: string[]; hooksPath: string; chain: string }
+/** The verified record of one completed proposal group: everything promotion and cleanup read for a versioned group. */
+export interface MaintenanceGroupRecord {
+    version: 1; proposalStep: number; issue: number; issueUrl: string; pr: number; prUrl: string; branch: string; head: string; worktree: string;
+    /** The settled Effect ids or verified observations that establish each part. */
+    issueEffect: string; pushEffect: string; prEffect: string; linkEffect: string; at: string;
+}
+export interface MaintenancePublicationCandidate {
+    /** The vendor-review candidate's index; stable within the run. */
+    index: number;
+    /** Stable cross-run identity of the evidenced change (`create-issue.ts`). */
+    key: string;
+    /** The read-only `proposal-issue` decision, approved before any write. */
+    issueDecision?: { decision: 'adopt' | 'create'; number: number; title: string; body: string; labels: string[]; identity: { source: string; locator: string; change: string; profile: string }; workerId: string; resultSha256: string; at: string };
+    issue?: { number: number; url: string; nodeId: string; title: string; effectId: string; adopted: boolean; at: string };
+    /** The record-before-create intent the shared candidate mechanics keep (`create-candidate.ts`). */
+    worktreeIntent?: { key: string; branch: string; worktree: string; candidateBase?: string; head: string };
+    candidate?: { branch: string; worktree: string; base: string; gitDir: string; gitCommonDir: string; hooks: PushHookBaseline; createdBy: 'maintenance'; at: string };
+    /** run.steps index of the versioned editor result and of the draft content. */
+    proposalStep?: number;
+    draftStep?: number;
+    draft?: { title: string; body: string; contentSha256: string; head: string; issue: number; branch: string; worktree: string; target: string; at: string };
+    push?: { effectId: string; head: string; observed?: 'already-at-head'; at: string };
+    pr?: { effectId: string; number: number; url: string; head: string; adopted: boolean; at: string };
+    link?: { effectId: string; commentId: number; url: string; at: string };
+    completed?: MaintenanceGroupRecord;
+    /** What changed on the owned branch, its PRs or the keyed issue while a worker held the assignment. */
+    observations?: { at: string; stage: string; detail: string }[];
+}
+export interface MaintenancePublication { version: 1; candidates: MaintenancePublicationCandidate[]; evidence: RetainedEvidence[] }
+export interface BrainFollowupDiagnosis { decision: 'blocked' | 'adopt' | 'create'; issue: number; title: string; body: string; labels: string[]; defect: string; source: string; summary: string; workerId: string; at: string }
+export interface BrainFollowupRouting { key: string; issue?: { number: number; url: string; nodeId: string; effectId: string; adopted: boolean }; assigned?: string; card?: { id: string; lane: string; effectIds: string[] }; verifiedAt?: string }
 export interface ProjectGoal {
     projectId?: string;
     mapping?: 'mapped' | 'unmapped';

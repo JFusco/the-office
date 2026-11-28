@@ -25,10 +25,17 @@ function weeklyRun(vendorReview: Record<string, unknown>) {
         if (opts.stage === 'vendor-review') return structuredClone(vendorReview);
         throw new Error(`synthetic stop at ${opts.stage}`);
     } };
-    return { store, run, stages, maintenance: new GitHubMaintenance(store, agents) };
+    // The vendor review reads a harness-supplied packet (#612): no completed scan here, a clean checkout.
+    const execute: any = async (program: string, args: string[]) => {
+        if (program === 'gh' && args[0] === 'run' && args[1] === 'list') return '[]';
+        if (program === 'git' && args[0] === 'rev-parse') return 'a'.repeat(40);
+        if (program === 'git' && args[0] === 'status') return '';
+        throw new Error(`unexpected ${program} ${args.join(' ')}`);
+    };
+    return { store, run, stages, maintenance: new GitHubMaintenance(store, agents, execute) };
 }
 
-test('a blocked vendor review with candidates persists, yields to the scheduler, then proceeds to the proposal', async () => {
+test('a blocked vendor review with candidates persists, yields to the scheduler, then proceeds to the proposal\'s issue decision', async () => {
     const { store, run, stages, maintenance } = weeklyRun({ ...passed, outcome: 'blocked', ledger: '', blocker: 'Retrieve the November 4 description.', candidates: [candidate] });
     await maintenance.pump(run.id);
     expect(run.status).toBe('queued');
@@ -36,9 +43,9 @@ test('a blocked vendor review with candidates persists, yields to the scheduler,
     expect(run.steps.map((s: any) => s.stage)).toEqual(['follow-up', 'vendor-review']);
     expect(store.state.maintenance!.ledger).toMatch(/^Retained follow-up ledger\.\nOPEN OBSERVATION \(vendor-review \d{4}-\d{2}-\d{2}, retained, not blocking\): Retrieve the November 4 description\.$/);
     await maintenance.pump(run.id);
-    expect(stages).toEqual(['vendor-review', 'proposal']);
+    expect(stages).toEqual(['vendor-review', 'proposal-issue']);
     expect(run.status).toBe('blocked');
-    expect(run.error).toContain('synthetic stop at proposal');
+    expect(run.error).toContain('synthetic stop at proposal-issue');
     expect(store.state.maintenance!.lastWeekly).toBe('');
 });
 

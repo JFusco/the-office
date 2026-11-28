@@ -10,6 +10,12 @@ import { spawn } from 'node:child_process';
 import { childEnvironment } from './child-environment';
 export type CommandOptions = {
     cwd?: string;
+    /**
+     * The absolute executable to start in place of `program`, for a harness-selected, qualified provider launch
+     * (`launch-qualification.ts`). `program` stays the logical name for runner and credential selection, receipts
+     * and failure classification.
+     */
+    executablePath?: string;
     /** Per-child overrides only; never change the service's process.env. */
     env?: Record<string, string>;
     /** Names removed from this child's inherited environment before `env` applies, e.g. ambient GitHub tokens. */
@@ -76,16 +82,17 @@ function replacementEnvironment(options: CommandOptions): NodeJS.ProcessEnv {
  * owned process group's lifecycle, the caller's hooks, stdout on success and a classified failure otherwise.
  * It never looks at the Office context; `command` (./process) chooses the runner a call goes to.
  */
-export async function spawnCommand(program: string, args: string[], options: CommandOptions = {}) {
+export async function spawnCommand(program: string, args: string[], options: CommandOptions = {}, additionalPins: readonly string[] = []) {
     if (options.signal?.aborted)
         throw new CommandFailure('Worker cancelled before dispatch', 'cancelled', false);
     const replaced = options.replaceEnv === undefined ? undefined : replacementEnvironment(options);
     // Unit tests inject fake runners; a test that reaches this real runner must never touch live services.
-    const live = process.env.VITEST ? liveReach(program, args, options.cwd) : '';
+    // Both the logical program and the executable actually started are checked, against every registered provider pin.
+    const live = process.env.VITEST ? liveReach(program, args, options.cwd, options.executablePath, additionalPins) : '';
     if (live)
         throw new CommandFailure(`${live} is blocked under unit tests; inject a fake command runner`, 'cancelled', false);
     return new Promise<string>((resolve, reject) => {
-        const child = spawn(program, args, { cwd: options.cwd, env: childEnvironment(options, replaced), stdio: ['pipe', 'pipe', 'pipe'], detached: true });
+        const child = spawn(options.executablePath ?? program, args, { cwd: options.cwd, env: childEnvironment(options, replaced), stdio: ['pipe', 'pipe', 'pipe'], detached: true });
         const lifecycle = child.pid && options.onLifecycle ? lifecycleRecorder(child.pid, options.lifecycleInventory) : undefined;
         let out = '', err = '', line = '', failure: Error | undefined, killTimer: ReturnType<typeof setTimeout> | undefined, interruptTimer: ReturnType<typeof setTimeout> | undefined;
         const alive = () => { if (!child.pid) return false; const probe = probeProcessGroup(child.pid); lifecycle?.probe(probe); return probe.state !== 'absent'; };

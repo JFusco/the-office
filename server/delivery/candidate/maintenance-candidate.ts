@@ -1,4 +1,6 @@
 import { basename, dirname, resolve } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { groupRecord } from '../../maintenance/publication/group-record';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 
@@ -14,9 +16,17 @@ export function maintenanceCandidate(store: Pick<Store, 'project' | 'state'>, jo
     const issue = /^GH-\d+$/.test(job.key) ? Number(job.key.slice(3)) : 0, branch = job.branch || '';
     if (!issue || !branch.startsWith(`codex/${issue}-`)) return '';
     const repo = store.project.repo, expected = resolve(dirname(repo), `${basename(repo)}-worktrees`, branch.slice('codex/'.length));
+    const real = (path: string) => { try { return realpathSync(path); } catch { return resolve(path); } };
     for (const run of store.state.maintenance?.runs || []) {
         if (run.status !== 'completed') continue;
+        // A versioned group (#612) is identified only by its complete completion record, bound to its saved proposal
+        // step (`group-record.ts`): every publication reference, and this issue, branch and owned path.
+        if ((run.publication?.candidates || []).some(candidate => {
+            const record = candidate.completed && groupRecord(run, candidate.completed.proposalStep, store.project.repository);
+            return !!record && record === candidate.completed && record.issue === issue && record.branch === branch && real(record.worktree) === real(expected);
+        })) return expected;
         for (const step of run.steps || []) {
+            if (step.publicationVersion === 1) continue;
             const receipts = step.result.receipts || [];
             // A step with no receipt at all published nothing it can show.
             if (step.stage !== 'draft-pr' || step.result.outcome !== 'passed' || !receipts.length || receipts.some(receipt => !receipt.verified || receipt.uncertain)) continue;

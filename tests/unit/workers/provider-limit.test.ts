@@ -67,16 +67,19 @@ test('a read-only run refused at the limit fails as a provider limit; a writer k
     expect(exitFailure('codex', 'codex exited 1: stream disconnected', false).category).toBe('uncertain-effect');
 });
 
-test('the runner itself fails a refused read-only process as a provider limit, and a refused writer as before', async () => {
+test('a real codex process can no longer start under unit tests; the runner classifies an injected exit as before (#612)', async () => {
+    // FIND-023: `codex` is a live provider, so the real runner refuses it before any child starts, even a fake on PATH.
     const bin = mkdtempSync(resolve(tmpdir(), 'office-limit-'));
     try {
         const event = JSON.stringify({ type: 'error', message: RECORDED.slice('codex exited 1: '.length) });
         writeFileSync(resolve(bin, 'codex'), `#!/bin/sh\ncat <<'EOF'\n${event}\nEOF\nexit 1\n`, { mode: 0o755 });
         const env = { PATH: `${bin}:${process.env.PATH}` };
-        const reader = await command('codex', [], { env, readOnly: true, timeout: 5000 }).catch(error => error);
-        expect(reader).toBeInstanceOf(CommandFailure);
-        expect([reader.category, reader.retryAt, reader.message]).toEqual(['provider-limit', local(2026, 11, 24, 11, 50), RECORDED]);
-        const writer = await command('codex', [], { env, timeout: 5000 }).catch(error => error);
-        expect([writer.category, writer.retryAt]).toEqual(['uncertain-effect', undefined]);
+        const refused = await command('codex', [], { env, readOnly: true, timeout: 5000 }).catch(error => error);
+        expect(refused).toBeInstanceOf(CommandFailure);
+        expect(refused).toMatchObject({ category: 'cancelled', dispatched: false });
+        // The same exit, injected as the runner reports it, is still a provider limit for a reader and unknown for a writer.
+        const message = workerFailure('codex', 1, `${event}\n`, '');
+        expect([exitFailure('codex', message, true).category, exitFailure('codex', message, true).retryAt]).toEqual(['provider-limit', local(2026, 11, 24, 11, 50)]);
+        expect(exitFailure('codex', message, false).category).toBe('uncertain-effect');
     } finally { rmSync(bin, { recursive: true, force: true }); }
 });

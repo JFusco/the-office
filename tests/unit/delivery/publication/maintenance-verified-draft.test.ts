@@ -93,3 +93,28 @@ test('a ready pull request, a moved head, another stage and a draft no maintenan
     expect(returnDraftToPromotion(f.store, { ...job, stage: 'merge' }, draft(job))).toBe(false);
     expect(job).toMatchObject({ stage: 'lead-pr', status: 'watching' });
 });
+
+test('a versioned group (#612) is promoted only on its completion record for this head and pull request; a content-only draft step alone proves nothing', () => {
+    const f = fakeGitHub(), job = f.candidate({ stage: 'prepare-pr', pr: 200 }), issue = issueOf(job);
+    const runs = published(issue);
+    const proposal = runs.runs[0].steps.findIndex((s: any) => s.stage === 'proposal');
+    runs.runs[0].steps[proposal].publicationVersion = 1;
+    runs.runs[0].steps.at(-1).result.receipts = [];
+    f.store.state.maintenance = runs;
+    expect(maintenanceVerifiedDraft(f.store, job)).toBe(false);
+    const repository = f.store.project.repository;
+    const record = { version: 1, proposalStep: proposal, issue, issueUrl: `https://github.com/${repository}/issues/${issue}`, pr: 200, prUrl: `https://github.com/${repository}/pull/200`,
+        branch: 'b', head: HEAD, worktree: '/w', issueEffect: 'i', pushEffect: 'p', prEffect: 'c', linkEffect: 'l', at: '2026-11-28T00:00:00Z' };
+    runs.runs[0].publication = { version: 1, evidence: [], candidates: [{ index: 0, key: 'k', proposalStep: proposal, completed: record }] };
+    expect(maintenanceVerifiedDraft(f.store, job)).toBe(true);
+    runs.runs[0].publication.candidates[0].completed = { ...record, pr: 201, prUrl: `https://github.com/${repository}/pull/201` };
+    expect(maintenanceVerifiedDraft(f.store, job)).toBe(false);
+    // A job that has not recorded its pull request cannot use the promotion proof.
+    runs.runs[0].publication.candidates[0].completed = record;
+    expect(maintenanceVerifiedDraft(f.store, { ...job, pr: undefined } as any)).toBe(false);
+    // A record missing any publication reference proves nothing.
+    for (const field of ['issueEffect', 'pushEffect', 'prEffect', 'linkEffect']) {
+        runs.runs[0].publication.candidates[0].completed = { ...record, [field]: '' };
+        expect(maintenanceVerifiedDraft(f.store, job), field).toBe(false);
+    }
+});

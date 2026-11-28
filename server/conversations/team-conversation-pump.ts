@@ -3,6 +3,7 @@ import { harperHandoff } from '../knowledge/blocker-followups';
 import { finishSupersededReadback } from './slack/finish-superseded-readback';
 import { assertConversationReadback } from './conversation-recovery';
 import { enqueueRequest } from '../scheduling/requests';
+import { stoppedVersionedFollowup } from '../maintenance/brain/brain-followup-readback';
 import { deferredPickup } from '../../src/work/pickup-state';
 import { savePickup } from '../delivery/intake/pickup';
 import { writeFileSync } from 'node:fs';
@@ -48,6 +49,15 @@ export async function pump(this: Conversations, id?: string) {
             this.record({ ...message, id: crypto.randomUUID(), from: 'pm', to: 'pm', body: `${message.ticket}'s earlier intake follow-up is deferred. No approval or new team work is due. It will wait for the configured pickup status or an explicit Start.`, status: 'answered', createdAt: new Date().toISOString(), recipients: [], receipts: [], recheck: false, error: '', question: '' });
             message.status = 'answered';
             this.store.emit('message-deferred', `${message.ticket}: stale intake follow-up closed; backlog remains deferred.`, 'pm', message.ticket);
+            return;
+        }
+        if (message.to === 'pm' && message.recheck && message.actionId.startsWith('maintenance-blocker:')
+            && stoppedVersionedFollowup(this.store.state.maintenance?.runs.find(run => run.id === message.actionId.slice('maintenance-blocker:'.length)))) {
+            // A stopped versioned repair follow-up is read back by the scheduler: queue it, and release this slot first (#612).
+            const request = enqueueRequest(this.store, 'reconcile-maintenance', message.actionId.slice('maintenance-blocker:'.length));
+            this.record({ ...message, id: crypto.randomUUID(), from: 'pm', to: 'pm', body: `Queued the read-back of the repair follow-up's original issue, assignment and card writes (request ${request.id}). Nothing is resent; an unsent phase continues only after every attempt is settled.`, status: 'answered', createdAt: new Date().toISOString(), recipients: [], receipts: [], recheck: false, error: '', question: '' });
+            message.status = 'answered';
+            this.store.emit('message-answered', 'Morgan queued the repair follow-up read-back.', 'pm');
             return;
         }
         if (message.to === 'pm' && message.recheck && message.actionId.startsWith('maintenance:')) {

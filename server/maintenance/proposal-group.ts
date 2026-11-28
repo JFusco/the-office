@@ -1,4 +1,5 @@
-import type { MaintenanceRun } from '../../src/shared';
+import type { MaintenanceGroupRecord, MaintenanceRun } from '../../src/shared';
+import { groupRecord } from './publication/group-record';
 
 type Step = MaintenanceRun['steps'][number];
 
@@ -12,6 +13,17 @@ export function latestProposalGroup(run: Pick<MaintenanceRun, 'steps'>, issue: n
     if (proposal < 0) return undefined;
     const next = steps.findIndex((step, index) => index > proposal && step.stage === 'proposal');
     return { proposal, end: next < 0 ? steps.length : next };
+}
+
+/** Whether the group's proposal ran under the #612 contract; such a group is published by the harness and proven by its record. */
+export const versionedGroup = (run: Pick<MaintenanceRun, 'steps'>, group: { proposal: number }) => run.steps[group.proposal]?.publicationVersion === 1;
+
+/**
+ * The completion record a versioned group needs before promotion or cleanup may rely on it; undefined for a partial
+ * group. A historical group has none and keeps its receipt rules.
+ */
+export function versionedGroupRecord(run: Pick<MaintenanceRun, 'steps' | 'publication'>, group: { proposal: number }, repository?: string): MaintenanceGroupRecord | undefined {
+    return versionedGroup(run, group) ? groupRecord(run, group.proposal, repository) : undefined;
 }
 
 /** A draft-pr step that passed with every write it attempted verified and none uncertain. */

@@ -17,7 +17,10 @@ const pair = (title: unknown, body: unknown) => typeof title === 'string' && typ
 
 /** What a saved write of this pull request says it wrote; null for another pull request's create, undefined when its own records conflict. */
 function described(store: Store, e: EffectIntent<any>, pr: DescriptionHistory): Write | null | undefined {
-    const own = e.work?.projectId === store.project.id && e.work.kind === 'delivery' && e.attemptId === e.work.id && e.authorization === 'office-harness';
+    // A maintenance run's harness create (#612) is the run's own: its run exists, the attempt is the run and the id is under it.
+    const maintenance = e.operation === 'github-pr-create' && e.work?.kind === 'maintenance' && !!store.state.maintenance?.runs.some(run => run.id === e.work.id)
+        && String(e.id).startsWith(`maintenance:${e.work.id}:`);
+    const own = e.work?.projectId === store.project.id && (e.work.kind === 'delivery' || maintenance) && e.attemptId === e.work.id && e.authorization === 'office-harness';
     const p = e.payload, r = e.receipt as any, verified = e.status === 'verified', key = String((e.expectedState as any)?.key);
     if (e.operation === 'github-pr-create') {
         if (verified && (r?.number !== pr.number || r?.url !== pr.url)) {
@@ -26,6 +29,8 @@ function described(store: Store, e: EffectIntent<any>, pr: DescriptionHistory): 
             return other ? null : undefined;
         }
         if (!own || p?.branch !== pr.branch || !HEAD.test(p?.head) || key !== `pr-create:${p.head}`) return undefined;
+        // A maintenance create binds its base and the head its receipt read back; a state-only receipt proves no authorship.
+        if (maintenance && (p.base !== store.project.target || verified && r?.head !== p.head)) return undefined;
         const recorded = verified && typeof r?.contentSha256 === 'string' && SHA.test(r.contentSha256);
         return { effect: e, head: p.head, contentSha256: recorded ? r.contentSha256 : '', ...(recorded ? { created: true } : {}) };
     }
@@ -62,6 +67,8 @@ export function ownDescription(store: Store, job: Pick<TicketJob, 'key' | 'branc
         return made.proven ? { owned: true, attribution: made.draft } : refuse(`no Office write is recorded and ${made.reason}`);
     }
     if (dispatched.some(w => !w)) return refuse('an Office write of this description has conflicting records');
+    // Two Office creates of one pull request (delivery and maintenance, in either order) cannot both be its creator.
+    if ((dispatched as Write[]).filter(w => w.effect.operation === 'github-pr-create').length > 1) return refuse('competing Office creates of this pull request are recorded');
     const writes = (dispatched as Write[]).sort((a, b) => Date.parse(a.effect.dispatchedAt) - Date.parse(b.effect.dispatchedAt));
     const latest = writes.at(-1)!, older = writes.slice(0, -1);
     if (older.some(w => Date.parse(w.effect.dispatchedAt) === Date.parse(latest.effect.dispatchedAt))) return refuse('two Office writes of this description were dispatched at the same time');

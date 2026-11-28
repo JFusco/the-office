@@ -56,7 +56,7 @@ export async function pump(this: Coordinator, selection?: string | { kind: 'deli
         }
         if (focusedJobId)
             return;
-        const sourceFollowup = new BrainFollowup(this.store, this.engine, this.execute), sourceRun = (!selected || selected.kind === 'followup') ? sourceFollowup.pending() : undefined;
+        const sourceFollowup = new BrainFollowup(this.store, this.engine, this.execute), sourceRun = (!selected || selected.kind === 'followup') ? sourceFollowup.pending(selected?.kind === 'followup' ? selected.id : undefined) : undefined;
         if (sourceRun) {
             await sourceFollowup.pump(sourceRun);
             return;

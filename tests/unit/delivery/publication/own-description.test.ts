@@ -128,3 +128,30 @@ test('a later merge whose draft step reported no candidates, and a two-commit pr
     expect(ownDescription(two.store, two.job, await readDescriptionHistory(two.store, two.delivery.execute, two.job.pr), two.nativeRoot))
         .toMatchObject({ owned: true, attribution: { head: tip } });
 });
+
+test('a maintenance run\'s harness create (#612) proves its description only with its own run, base, head and digest; competing creates refuse in either order', async () => {
+    const maintenanceCreate = (f: ReturnType<typeof setup>, receipt: Record<string, unknown>, minute = 1, base = 'main') => {
+        f.store.state.maintenance = { runs: [{ id: 'run-1', status: 'completed', steps: [] } as any], lastDaily: '', lastWeekly: '', ledger: '' };
+        return f.effect({ id: `maintenance:run-1:cms-k:pr-create:${OLD}`, work: { projectId: f.store.project.id, kind: 'maintenance', id: 'run-1' }, attemptId: 'run-1', operation: 'github-pr-create',
+            target: `${REPOSITORY}:${f.job.branch}`, payload: { head: OLD, branch: f.job.branch, base }, expectedState: { key: `pr-create:${OLD}` }, dispatchedAt: at(minute), receipt });
+    };
+    const proof = (f: ReturnType<typeof setup>) => ({ number: 200, url: f.pr.html_url, head: OLD, contentSha256: digest({ title: f.pr.title, body: CREATED_BODY }) });
+    const owned = setup(), e = maintenanceCreate(owned, proof(owned));
+    expect(await owned.own()).toEqual({ owned: true, attribution: { head: OLD, source: { kind: 'effect', effectId: e.id, operation: 'github-pr-create' }, contentSha256: digest({ title: owned.pr.title, body: CREATED_BODY }) } });
+    const stateOnly = setup(); maintenanceCreate(stateOnly, { number: 200, url: stateOnly.pr.html_url, head: OLD });
+    expect(await stateOnly.own()).toEqual({ owned: false, reason: 'the latest Office write of this description has no provable content' });
+    const wrongBase = setup(); maintenanceCreate(wrongBase, proof(wrongBase), 1, 'release');
+    expect(await wrongBase.own()).toEqual({ owned: false, reason: 'an Office write of this description has conflicting records' });
+    const wrongHead = setup(); maintenanceCreate(wrongHead, { ...proof(wrongHead), head: 'd'.repeat(40) });
+    expect(await wrongHead.own()).toEqual({ owned: false, reason: 'an Office write of this description has conflicting records' });
+    for (const order of [[1, 2], [2, 1]]) {
+        const competing = setup();
+        competing.created({ number: 200, url: competing.pr.html_url, contentSha256: digest({ title: competing.pr.title, body: CREATED_BODY }) }, OLD, order[0]);
+        maintenanceCreate(competing, proof(competing), order[1]);
+        expect(await competing.own()).toEqual({ owned: false, reason: 'competing Office creates of this pull request are recorded' });
+    }
+    const unknownRun = setup(), u = maintenanceCreate(unknownRun, proof(unknownRun));
+    unknownRun.store.state.maintenance!.runs = [];
+    expect(await unknownRun.own()).toEqual({ owned: false, reason: 'an Office write of this description has conflicting records' });
+    expect(u.id.startsWith('maintenance:run-1:')).toBe(true);
+});

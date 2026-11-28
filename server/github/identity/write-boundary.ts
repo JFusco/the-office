@@ -147,6 +147,9 @@ export async function executeGitHubWrite<T, R>(store: Store, operation: EffectOp
             }
         },
         claim: intent => {
+            // A caller's own synchronous ownership check (a maintenance claim) is composed before the writer check.
+            const owned = operation.claim?.(intent);
+            if (owned) return owned;
             const { refusal, decision } = claimRefusal(store, runtime.config(), intent, chosen.route);
             if (refusal) return refusal;
             if (decision?.kind === 'operator' && decision.mode === 'rollback') {

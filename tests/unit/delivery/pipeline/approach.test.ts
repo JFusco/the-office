@@ -411,16 +411,24 @@ test('CMS agents can omit review and QA assignments, but only with a saved reaso
     stores.push(store);
     mkdirSync(resolve(root, 'handover'));
     writeFileSync(resolve(root, 'handover/policies.json'), JSON.stringify([{ id: 'fixture', prompt: 'Unit fixture only', memory: '' }]));
-    const engine = new Engine(store), calls: string[] = [];
+    // The weekly vendor review reads its harness packet first (#612): no completed scan, a clean checkout.
+    const packetReads = (async (program: string, args: string[]) => program === 'gh' && args[1] === 'list' ? '[]' : args[0] === 'rev-parse' ? sha : '') as any;
+    const engine = new Engine(store, undefined, undefined, undefined, undefined, packetReads), calls: string[] = [];
     engine.maintenance.verifyCandidate = async () => { };
     engine.maintenance.verifyDraft = async () => { };
     const candidate = { issue: 123, worktree: '/private/tmp/fixture-worktree', branch: 'codex/123-fixture', head: sha, summary: 'Synthetic fixture', approach: small };
     engine.agents.run = async (_role, _task, _schema, opts) => { const stage = opts!.stage!; calls.push(stage); const path = resolve(root, 'runs', opts!.requestId!, 'checks.txt'); writeFileSync(path, 'Synthetic fixture; no actual package checks'); return { outcome: 'passed', summary: 'Fixture', ledger: 'Fixture', blocker: '', receipts: [], checks: [{ path, commit: sha, summary: 'Fixture' }], candidates: ['vendor-review', 'proposal'].includes(stage) ? [candidate] : [] } as any; };
+    // Under #612 the unstarted proposal position first runs its read-only issue decision; this fixture stops there.
+    // The full chain with this same omitted review and QA is driven in tests/unit/maintenance/versioned-weekly-pump.test.ts.
+    const agent = engine.agents.run;
+    engine.agents.run = (async (role: any, task: any, schema: any, opts: any) => opts!.stage === 'proposal-issue'
+        ? (calls.push('proposal-issue'), { outcome: 'blocked', issue: 0, title: '', body: '', labels: [], identity: { source: '', locator: '', change: '', profile: '' }, approach: null, summary: '', blocker: 'Fixture stops at the issue decision' })
+        : agent(role, task, schema, opts)) as any;
     const run = engine.maintenance.request();
     run.weekly = true;
     await drainMaintenance(engine.maintenance);
-    expect(run.status).toBe('completed');
-    expect(calls).toEqual(['follow-up', 'vendor-review', 'proposal', 'draft-pr']);
+    expect([run.status, run.error]).toEqual(['blocked', expect.stringContaining('Fixture stops at the issue decision')]);
+    expect(calls).toEqual(['follow-up', 'vendor-review', 'proposal-issue']);
     expect(run.decisions?.[0].approach).toEqual(small);
 });
 test('a first focused review is not a reduction from an invented full review; skips retain failure guards', () => {

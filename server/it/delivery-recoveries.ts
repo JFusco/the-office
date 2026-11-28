@@ -19,6 +19,7 @@ import { validationReadbackCandidate } from '../delivery/recovery/validation/val
 import { implementationRecoveryCandidate } from '../delivery/recovery/implementation/implementation-recovery';
 import { nativeDeliveryReadbackCandidate } from '../maintenance/brain/brain-delivery-readback';
 import { enqueueRequest } from '../scheduling/requests';
+import { followupEffects, stoppedVersionedFollowup } from '../maintenance/brain/brain-followup-readback';
 import { holdReason } from '../office/project-holds';
 import { recoverBoardPreflights } from './board-preflight-recovery';
 import { temporaryReadFailure, reconcileReadRetries } from '../scheduling/read-retries';
@@ -167,7 +168,11 @@ export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
             if (!(checkpoint.retryAt && Date.parse(checkpoint.retryAt) > now.getTime()) && supersededCheckpoint(checkpoint, state.coordination!.checkpoints)) continue;
             if (original.blockerFollowup) {
                 const f = original.blockerFollowup;
-                if (['blocked', 'interrupted'].includes(f.status))
+                // A versioned follow-up with attempted writes is read back through the same deduplicated request (#612).
+                if (stoppedVersionedFollowup(original) && followupEffects(store, original).some(effect => !!effect.dispatchedAt))
+                    await recover(`maintenance-blocker:${original.id}`, f.detail, async () => enqueueRequest(store, 'reconcile-maintenance', original.id),
+                        'Morgan reads back the repair follow-up\'s original issue, assignment and card writes; nothing is resent and only an unsent phase continues.', 'Morgan');
+                else if (['blocked', 'interrupted'].includes(f.status))
                     followUps.push({ id: `maintenance-blocker:${original.id}`, owner: 'Morgan', detail: f.detail });
                 // Source repair intake owns the next action. Do not repeatedly attempt
                 // the exhausted nightly gate or label this a login/approval problem.
