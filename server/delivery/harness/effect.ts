@@ -68,8 +68,8 @@ export interface CheckedBinding {
     work: WorkRef;
     attemptId: string;
     /**
-     * Synchronous, inside the transaction that claims the prepared intent, before the writer check: a refusal rejects
-     * the intent unsent. A maintenance write binds its running scheduler claim and ownership here.
+     * Synchronous, inside the transaction that claims the prepared intent, once a GitHub write's writer checks pass: a
+     * refusal rejects the intent unsent. A maintenance write binds its running scheduler claim and ownership here.
      */
     claim?: (intent: Readonly<EffectIntent>) => string | undefined;
 }
