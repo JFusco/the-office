@@ -1,6 +1,8 @@
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import { AppTrialPacket, approvedEntry, bindPacket, isSuccessorOf } from '../../../../../server/github/identity/app-trial/trial-packet';
-import { appBlock, BODY, BOT, ENTRY, ISSUE, MARKER, PACKET, PROJECT } from './support/trial-fixture';
+import { canonicalDigest } from '../../../../../server/github/identity/route-entry';
+import { changeDigest } from '../../../../../server/github/identity/write-boundary';
+import { appBlock, BODY, BOT, ENTRY, ISSUE, MARKER, PACKET, PR_BODY, PR_ENTRY, PR_MARKER, PR_PACKET, prPayload, PROJECT, PULL } from './support/trial-fixture';
 
 const parsed = (packet: object) => AppTrialPacket.parse(packet);
 
@@ -49,4 +51,43 @@ test('only the whole retry or writer suffix makes a successor of the trial id', 
 
 test('binding refuses a project that is not on GitHub', () => {
     expect(() => bindPacket({ ...PROJECT, provider: 'azure' }, parsed(PACKET))).toThrow(/project or repository/);
+});
+
+describe('a pull request conversation trial', () => {
+    test('binds the github-pr-comment adapter on the PR URL, with the PR ids, head and base in the approved payload', () => {
+        const trial = bindPacket(PROJECT, parsed(PR_PACKET));
+        expect(trial).toMatchObject({ operation: 'github-pr-comment', target: PULL, entry: PR_ENTRY, comment: { number: 9001, kind: 'pull', marker: PR_MARKER, body: PR_BODY } });
+        expect(Object.keys(trial.payload)).toEqual(['number', 'marker', 'body', 'author', 'pull']);
+        expect(trial.payload).toEqual(prPayload());
+        expect(approvedEntry(parsed(PR_PACKET), PULL)).toEqual(appBlock({ comment: PR_ENTRY })!.writes['the-office'].comment);
+    });
+
+    test('an issue packet parses and binds exactly as before: same keys, same packet digest, no pull facts in its payload', () => {
+        expect(canonicalDigest(parsed(PACKET))).toBe(canonicalDigest(PACKET));
+        expect(Object.keys(bindPacket(PROJECT, parsed(PACKET)).payload)).toEqual(['number', 'marker', 'body', 'author']);
+    });
+
+    test.each([
+        ['both an issue and a pull request', { ...PR_PACKET, issue: PACKET.issue }],
+        ['a short head sha', { ...PR_PACKET, pull: { ...PR_PACKET.pull, head: { ...PR_PACKET.pull.head, sha: 'abc' } } }],
+        ['an unknown pull field', { ...PR_PACKET, pull: { ...PR_PACKET.pull, draft: true } }],
+        ['no base', { ...PR_PACKET, pull: { ...PR_PACKET.pull, base: undefined } }],
+    ])('the schema refuses %s', (_name, packet) => {
+        expect(() => parsed(packet)).toThrow();
+    });
+
+    test.each([
+        ['another head sha', { head: { sha: 'b'.repeat(40), ref: 'office-app-trial-fixture' } }],
+        ['another head ref', { head: { sha: 'a'.repeat(40), ref: 'other' } }],
+        ['another base', { base: { ref: 'release' } }],
+        ['another PR id', { id: 3000000002 }],
+        ['another PR node id', { nodeId: 'PR_other' }],
+    ])('a packet substituting %s under the approved digest refuses', (_name, change) => {
+        expect(() => bindPacket(PROJECT, parsed({ ...PR_PACKET, pull: { ...PR_PACKET.pull, ...change } }))).toThrow(/does not match the approved change/);
+    });
+
+    test('the same comment approved as an issue comment digest is not a PR comment approval', () => {
+        const relabeled = changeDigest({ id: PR_PACKET.effectId, operation: 'github-issue-comment', target: PULL, payload: prPayload() });
+        expect(() => bindPacket(PROJECT, parsed({ ...PR_PACKET, expectedDigest: relabeled }))).toThrow(/does not match the approved change/);
+    });
 });

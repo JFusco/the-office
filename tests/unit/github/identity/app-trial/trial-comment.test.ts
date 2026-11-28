@@ -1,6 +1,6 @@
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { canonicalDigest, entryDigest } from '../../../../../server/github/identity/route-entry';
-import { APP_POST, BOT, comment, ENTRY, ISSUE, MARKER, BODY, OPERATOR, PACKET, trialOffice, type ProviderHooks, type TrialOffice } from './support/trial-fixture';
+import { APP_POST, BOT, comment, ENTRY, ISSUE, MARKER, BODY, OPERATOR, PACKET, PR_ENTRY, PR_PACKET, prPacket, prPayload, PULL, PULL_CONVERSATION, trialOffice, type ProviderHooks, type TrialOffice } from './support/trial-fixture';
 
 const holds = vi.hoisted(() => ({ value: {} as Record<string, string> }));
 vi.mock('../../../../../server/office/project-holds', async original => ({
@@ -254,4 +254,90 @@ test('GitHub recording another actor never qualifies and never resends', async (
     f.hooks.author = { login: BOT.login, id: 1 };
     await expect(f.run()).resolves.toMatchObject({ status: 'verified', qualified: false, qualification: null });
     expect(f.counts.posts).toEqual([APP_POST]);
+});
+
+describe('a pull request conversation trial', () => {
+    const prOffice = () => trialOffice({ comment: PR_ENTRY }, {}, PULL_CONVERSATION);
+    const runPr = (office: TrialOffice, packet: object = PR_PACKET, mode: 'check' | 'run' = 'run') => office.run(packet, mode);
+
+    test('check reads the approved PR and its conversation and creates, mints and sends nothing', async () => {
+        f = prOffice();
+        await expect(runPr(f, PR_PACKET, 'check')).resolves.toMatchObject({ status: 'none', target: PULL });
+        expect([...nothing(f), f.counts.tokens, f.counts.pullReads]).toEqual([[], [], 0, 1]);
+    });
+
+    test('a matching run sends one POST through the shared PR comment adapter under the Pull requests grant, and qualifies the bot on the PR', async () => {
+        f = prOffice();
+        await expect(runPr(f)).resolves.toMatchObject({ status: 'verified', qualified: true, receipt: { id: 900, url: `${PULL}#issuecomment-900` },
+            qualification: { record: `${PULL}#issuecomment-900`, target: PULL, transition: 'pull request comment created', actor: BOT } });
+        expect([f.counts.posts, f.counts.permissions]).toEqual([[APP_POST], [{ pull_requests: 'write' }]]);
+        expect(f.counts.pullPrincipals).toEqual(['operator', APP_POST]);
+        expect(f.store.getEffect(PR_PACKET.effectId)).toMatchObject({ operation: 'github-pr-comment', target: PULL, work: { projectId: 'the-office', kind: 'pr', id: '9001' },
+            payload: prPayload(), writer: { principal: 'app', operation: 'comment', binding: { adapter: 'github-pr-comment', target: PULL } } });
+        f.reopen();
+        await expect(runPr(f)).resolves.toMatchObject({ status: 'verified', qualified: true });
+        expect(f.counts.posts).toEqual([APP_POST]);
+    });
+
+    test('the issue trial keeps its Issues grant', async () => {
+        f = trialOffice();
+        await f.run();
+        expect(f.counts.permissions).toEqual([{ issues: 'write' }]);
+    });
+
+    test('a replacement packet whose head GitHub agrees with cannot reuse the approved entry, with no saved intent', async () => {
+        f = prOffice();
+        const moved = { sha: 'b'.repeat(40), ref: PR_PACKET.pull.head.ref };
+        f.hooks.pull = () => ({ head: { ...moved, repo: { full_name: 'JFusco/the-office' } } });
+        await expect(runPr(f, prPacket({ ...PR_PACKET.pull, head: moved }))).rejects.toThrow(/does not name this Effect/);
+        expect([...nothing(f), f.counts.tokens, f.counts.pullReads]).toEqual([[], [], 0, 0]);
+    });
+
+    test.each<[string, Record<string, unknown>]>([
+        ['moved to a new head', { head: { sha: 'b'.repeat(40), ref: PR_PACKET.pull.head.ref, repo: { full_name: 'JFusco/the-office' } } }],
+        ['merged', { merged: true }],
+        ['closed', { state: 'closed' }],
+        ['locked', { locked: true }],
+    ])('a PR %s while the final marker listing is in flight rejects the same intent unsent', async (_name, drift) => {
+        f = prOffice();
+        f.hooks.list = (all, read) => { if (read === 2) f!.hooks.pull = () => drift; return all; };
+        await expect(runPr(f)).resolves.toMatchObject(spent(/approved head and base|not open, unmerged and unlocked/));
+        expect(f.store.getEffect(PR_PACKET.effectId)).toMatchObject({ status: 'rejected', dispatchedAt: '' });
+        expect(f.counts.posts).toEqual([]);
+        await expect(runPr(f)).rejects.toThrow(/already refused or rejected/);
+        expect(nothing(f)).toEqual([[PR_PACKET.effectId], []]);
+    });
+
+    test('a lost response settles delivery by independent read-back with no second POST, and stays unqualified without the POST receipt', async () => {
+        f = prOffice();
+        f.hooks.lose = true;
+        await expect(runPr(f)).resolves.toMatchObject({ status: 'uncertain', dispatched: true, qualified: false, receipt: null });
+        f.hooks.lose = false;
+        f.reopen();
+        await expect(runPr(f)).resolves.toMatchObject({ status: 'verified', qualified: false, qualification: null, receipt: { id: 900, url: `${PULL}#issuecomment-900` } });
+        await expect(runPr(f)).resolves.toMatchObject({ status: 'verified', qualified: false });
+        expect([f.counts.posts, f.effects()]).toEqual([[APP_POST], [PR_PACKET.effectId]]);
+    });
+
+    test('a lagging listing leaves the attempt for read-back under the saved App writer, which then qualifies it with no resend', async () => {
+        f = prOffice();
+        f.hooks.list = all => all.filter(item => item.id !== 900);
+        await expect(runPr(f)).resolves.toMatchObject({ status: 'uncertain', receipt: { id: 900 } });
+        f.hooks.list = undefined;
+        f.configure({});
+        await expect(runPr(f)).resolves.toMatchObject({ status: 'verified', qualified: true, qualification: { actor: BOT, target: PULL } });
+        expect([f.counts.posts, f.counts.permissions.at(-1)]).toEqual([[APP_POST], { pull_requests: 'write' }]);
+    });
+
+    test('another actor recorded on the PR comment never qualifies and never resends', async () => {
+        f = prOffice();
+        f.hooks.author = { login: BOT.login, id: 1 };
+        await expect(runPr(f)).resolves.toMatchObject({ status: 'verified', qualified: false, qualification: null });
+        f.cleanup();
+        f = prOffice();
+        f.hooks.author = OPERATOR;
+        await expect(runPr(f)).resolves.toMatchObject({ status: 'uncertain', qualified: false });
+        await expect(runPr(f)).resolves.toMatchObject({ status: 'uncertain', qualified: false });
+        expect(f.counts.posts).toEqual([APP_POST]);
+    });
 });

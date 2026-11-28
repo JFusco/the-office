@@ -7,6 +7,8 @@ import { parseGitHubApp, type GitHubAppConfig, type QualifyEntry } from '../../.
 import type { InstallationTokens } from '../../../../../../server/github/identity/installation-token';
 import { currentPrincipal } from '../../../../../../server/github/identity/write-credential-scope';
 import { appTrialComment } from '../../../../../../server/github/identity/app-trial/trial-comment';
+import { changeDigest } from '../../../../../../server/github/identity/write-boundary';
+import { canonicalDigest } from '../../../../../../server/github/identity/route-entry';
 import type { OfficeProject } from '../../../../../../src/shared';
 
 /**
@@ -34,8 +36,38 @@ export const ENTRY: QualifyEntry = { mode: 'qualify', effectId: PACKET.effectId,
 export const PROJECT: OfficeProject = { id: 'the-office', name: 'The Office', provider: 'github', repo: '/nonexistent/the-office', repository: 'JFusco/the-office', target: 'main', autoAdopt: [] };
 const NOW = Date.parse('2026-11-28T06:00:00.000Z');
 export type Comment = { id: number; body: string; html_url: string; issue_url: string; user: { login: string; id: number }; created_at: string };
-export const comment = (id: number, body: string, user = BOT, created = '2026-11-27T00:00:00Z'): Comment =>
-    ({ id, body, html_url: `${ISSUE}#issuecomment-${id}`, issue_url: API_ISSUE, user: { ...user }, created_at: created });
+/** The conversation a fixture comment belongs to: the approved issue by default. */
+export interface Conversation { number: number; url: string; api: string }
+export const ISSUE_CONVERSATION: Conversation = { number: 629, url: ISSUE, api: API_ISSUE };
+export const comment = (id: number, body: string, user = BOT, created = '2026-11-27T00:00:00Z', on: Conversation = ISSUE_CONVERSATION): Comment =>
+    ({ id, body, html_url: `${on.url}#issuecomment-${id}`, issue_url: on.api, user: { ...user }, created_at: created });
+
+/**
+ * A synthetic pull request conversation for the `github-pr-comment` trial: made-up number, ids and head, never a live
+ * target. GitHub keeps a PR conversation comment on the issue comments endpoint, anchored at `/pull/<n>`.
+ */
+export const PULL = 'https://github.com/JFusco/the-office/pull/9001';
+export const PULL_CONVERSATION: Conversation = { number: 9001, url: PULL, api: 'https://api.github.com/repos/JFusco/the-office/issues/9001' };
+export const PR_MARKER = '<!-- office-app-qualification:629:pr-comment:fixture -->';
+export const PR_BODY = `${PR_MARKER}\n\nThe Office GitHub App posted this inert comment for the approved pull request comment qualification on #629.`;
+const PR_ID = 'office-app-trial:the-office:pr-comment:9001:fixture';
+const PR_FACTS = { number: 9001, id: 3000000001, nodeId: 'PR_fixture9001', head: { sha: 'a'.repeat(40), ref: 'office-app-trial-fixture' }, base: { ref: 'main' } };
+/** The PR trial's payload: the comment, then the approved PR facts, so the approved change digest binds them. */
+export const prPayload = (facts = PR_FACTS) =>
+    ({ number: facts.number, marker: PR_MARKER, body: PR_BODY, author: PACKET.botLogin, pull: { id: facts.id, nodeId: facts.nodeId, head: { ...facts.head }, base: { ...facts.base } } });
+/** A PR packet for `facts`, with its own correctly computed change digest. */
+export const prPacket = (facts = PR_FACTS) => ({
+    projectId: 'the-office', repository: 'JFusco/the-office', repositoryId: PACKET.repositoryId, appId: PACKET.appId, installationId: PACKET.installationId,
+    botLogin: PACKET.botLogin, botId: PACKET.botId, effectId: PR_ID, pull: structuredClone(facts),
+    marker: PR_MARKER, body: PR_BODY, beforeDigest: canonicalDigest(null),
+    expectedDigest: changeDigest({ id: PR_ID, operation: 'github-pr-comment', target: `https://github.com/JFusco/the-office/pull/${facts.number}`, payload: prPayload(facts) }),
+});
+export const PR_PACKET = prPacket();
+export const PR_ENTRY: QualifyEntry = { mode: 'qualify', effectId: PR_ID, installationId: PACKET.installationId, repositoryId: PACKET.repositoryId,
+    adapter: 'github-pr-comment', target: PULL, beforeDigest: PR_PACKET.beforeDigest, expectedDigest: PR_PACKET.expectedDigest };
+/** The pull request as GitHub reports it at the approved head and base. */
+const pullRequest = () => ({ number: 9001, id: PR_PACKET.pull.id, node_id: PR_PACKET.pull.nodeId, html_url: PULL, state: 'open', merged: false, locked: false,
+    head: { sha: PR_PACKET.pull.head.sha, ref: PR_PACKET.pull.head.ref, repo: { full_name: 'JFusco/the-office' } }, base: { ref: 'main', repo: { full_name: 'JFusco/the-office' } } });
 
 /** The parsed `githubApp` block with the given `comment` route and top-level changes, validated as start-up would. */
 export function appBlock(writes: unknown, change: Record<string, unknown> = {}): GitHubAppConfig | undefined {
@@ -54,6 +86,8 @@ export interface ProviderHooks {
     list?: (all: Comment[], read: number) => Comment[] | Promise<Comment[]>;
     /** Changes to the n-th issue read. */
     issue?: (read: number) => Record<string, unknown> | undefined;
+    /** Changes to the n-th pull request read. */
+    pull?: (read: number) => Record<string, unknown> | undefined;
     /** The repository id the n-th repository read reports. */
     repositoryId?: (read: number) => number;
     /** Who GitHub records on a POST: the scoped principal by default. */
@@ -64,13 +98,13 @@ export interface ProviderHooks {
  * A temporary file-backed `the-office` store bound to an injected identity runtime, and a counted GitHub: every POST
  * records the principal it ran under, every read is counted, and nothing reaches a live provider.
  */
-export function trialOffice(writes: unknown = { comment: ENTRY }, change: Record<string, unknown> = {}) {
+export function trialOffice(writes: unknown = { comment: ENTRY }, change: Record<string, unknown> = {}, on: Conversation = ISSUE_CONVERSATION) {
     const folder = realpathSync(mkdtempSync(join(tmpdir(), 'app-trial-'))), path = join(folder, 'office.sqlite');
     let config = appBlock(writes, change);
-    const counts = { tokens: 0, issued: [] as { installationId: number; repositoryId: number }[], posts: [] as string[], listReads: 0, issueReads: 0, repositoryReads: 0, idReads: 0, issuePrincipals: [] as string[] };
+    const counts = { tokens: 0, issued: [] as { installationId: number; repositoryId: number }[], permissions: [] as unknown[], pullReads: 0, pullPrincipals: [] as string[], posts: [] as string[], listReads: 0, issueReads: 0, repositoryReads: 0, idReads: 0, issuePrincipals: [] as string[] };
     const hooks: ProviderHooks = {};
-    const tokens = { token: async (request: { installationId: number; repositoryId: number }) => {
-        counts.tokens++; counts.issued.push({ installationId: request.installationId, repositoryId: request.repositoryId }); hooks.atToken?.();
+    const tokens = { token: async (request: { installationId: number; repositoryId: number; permissions?: unknown }) => {
+        counts.tokens++; counts.issued.push({ installationId: request.installationId, repositoryId: request.repositoryId }); counts.permissions.push(request.permissions); hooks.atToken?.();
         return { token: 'synthetic', expiresAt: NOW + 3_600_000, permissions: {}, ...request };
     } } as unknown as InstallationTokens;
     const open = () => {
@@ -79,17 +113,17 @@ export function trialOffice(writes: unknown = { comment: ENTRY }, change: Record
         return store;
     };
     let store = open();
-    const comments: Comment[] = [comment(100, 'An earlier comment.', OPERATOR)];
+    const comments: Comment[] = [comment(100, 'An earlier comment.', OPERATOR, undefined, on)];
     const execute = async (_program: string, args: string[]) => {
-        const path = args[1];
+        const path = args.find(arg => arg.startsWith('repos/'))!;
         if (args.includes('POST')) {
-            // Only the approved #629 conversation accepts the comment; any other destination records nothing.
-            if (path !== 'repos/JFusco/the-office/issues/629/comments') throw new Error(`gh: Not Found (HTTP 404): POST ${path}`);
+            // Only the fixture's conversation accepts the comment; any other destination records nothing.
+            if (path !== `repos/JFusco/the-office/issues/${on.number}/comments`) throw new Error(`gh: Not Found (HTTP 404): POST ${path}`);
             const principal = currentPrincipal(), id = 900 + counts.posts.length;
             counts.posts.push(principal);
-            comments.push(comment(id, args[args.indexOf('-f') + 1].slice('body='.length), hooks.author ?? (principal === 'operator' ? OPERATOR : BOT), new Date(NOW).toISOString()));
+            comments.push(comment(id, args[args.indexOf('-f') + 1].slice('body='.length), hooks.author ?? (principal === 'operator' ? OPERATOR : BOT), new Date(NOW).toISOString(), on));
             if (hooks.lose) throw new Error('gh timed out; previous action outcome must be reconciled');
-            return JSON.stringify({ id, html_url: `${ISSUE}#issuecomment-${id}` });
+            return JSON.stringify({ id, html_url: `${on.url}#issuecomment-${id}` });
         }
         if (path === 'repos/JFusco/the-office') {
             const read = ++counts.repositoryReads;
@@ -99,6 +133,11 @@ export function trialOffice(writes: unknown = { comment: ENTRY }, change: Record
             const read = ++counts.issueReads;
             counts.issuePrincipals.push(currentPrincipal());
             return JSON.stringify({ number: 629, id: PACKET.issue.id, node_id: PACKET.issue.nodeId, html_url: ISSUE, state: 'open', locked: false, ...hooks.issue?.(read) });
+        }
+        if (path === 'repos/JFusco/the-office/pulls/9001') {
+            const read = ++counts.pullReads;
+            counts.pullPrincipals.push(currentPrincipal());
+            return JSON.stringify({ ...pullRequest(), ...hooks.pull?.(read) });
         }
         if (args.includes('--paginate')) {
             const read = ++counts.listReads;

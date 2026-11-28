@@ -1429,7 +1429,7 @@ as the Office GitHub App, never by a model's choice.
   operator, and a retry suffix needs its own grant. A different target or change on the reserved id holds.
   The trial is verified by the adapter's independent read-back; only actor-bearing evidence (the bot on the
   bound target) qualifies. A lost response is reconciled read-only under the saved App writer.
-- **Issue-comment trial command.** `pnpm office app-trial check|run --project <id> --file <packet.json>`
+- **App comment trial command.** `pnpm office app-trial check|run --project <id> --file <packet.json>`
   (`server/github/identity/app-trial/`) posts Joe's approved public packet to `/api/commands`, under the
   service's origin, fence and body-size checks. The packet names the project, repository and id, App,
   installation, bot login and id, an `office-app-trial:` Effect id, the issue number, id and node id, the
@@ -1464,6 +1464,20 @@ as the Office GitHub App, never by a model's choice.
   only a stored retry or writer successor of the id (not another approved id beneath it) refuses the
   command. `run` exits zero only for a verified Effect whose read-back qualified the approved bot. It never
   promotes the route.
+- **Pull request comment trial.** The same command also takes a packet with `pull` in place of `issue`. The
+  `pull` field holds the PR's number, id, node id, head sha and ref, and base ref. Its fixed adapter is
+  `github-pr-comment`, the `rest-pr-comment` mutation under the Pull requests grant. The trial posts one inert
+  marked comment on the PR conversation through the shared PR conversation comment adapter
+  (`server/github/pr-conversation-comment.ts`). Dependabot's redo command `@dependabot rebase` goes through
+  that same adapter with its saved argv unchanged.
+  - **What the approved change binds.** The PR's ids, head and base are part of the payload, so they are
+    inside the approved change digest. A replacement packet with another head, base or id never matches
+    the configured entry, even when GitHub agrees with it.
+  - **Target checks.** Before the intent exists, and again as the App-scoped credential check, GitHub must
+    show the PR in this repository at the approved head and base, open, unmerged and unlocked.
+  - **Qualification.** Only this operation qualifies a PR conversation comment, with the saved POST ID and
+    the bot by login and id. A harness proof comment on a PR records no evidence.
+  - **Issue packets** and their payloads and digests are unchanged.
 - **Promotion.** `office-app` applies only when every mutation of the route has a verified, actor-bearing
   trial for the full binding, the trials follow the route's latest revocation (or none, on first
   promotion), no proof belongs to an earlier activation, and no unchecked publisher shares the route. One
