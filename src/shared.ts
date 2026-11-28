@@ -1038,10 +1038,14 @@ export interface OfficePreferences {
     keyboardShortcuts: boolean;
     deliveryToasts: boolean;
     coffeeBreaks: boolean;
+    soundVolume: number;
+    hoverSound: boolean;
+    settingSounds: boolean;
+    floorSound: boolean;
     revision: number;
 }
 export type OfficePreferencesPatch = Partial<Omit<OfficePreferences, 'revision'>>;
-export const OFFICE_PREFERENCE_DEFAULTS: OfficePreferences = { quality: 'high', reducedMotion: false, keyboardShortcuts: true, deliveryToasts: true, coffeeBreaks: true, revision: 0 };
+export const OFFICE_PREFERENCE_DEFAULTS: OfficePreferences = { quality: 'high', reducedMotion: false, keyboardShortcuts: true, deliveryToasts: true, coffeeBreaks: true, soundVolume: 25, hoverSound: false, settingSounds: false, floorSound: false, revision: 0 };
 /** Preference responses carry the service identity so a client can scope revision ordering. */
 export type OfficePreferencesResponse = OfficePreferences & { serviceInstanceId: string };
 /** Read-only public projection of the effective office configuration. */

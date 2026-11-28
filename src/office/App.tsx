@@ -1,3 +1,4 @@
+import { officeSound } from './sound/player';
 import { qaResultChanges } from '../work/qa-notifications';
 import { LoadingMark, LoadingState } from '../ui/LoadingState';
 import type { CameraBookmark } from '../scene/camera-bookmark';
@@ -77,6 +78,7 @@ export default function App(){
   const finishedSurfaces=useRef(new Set<string>());
   // Office preferences come only from accepted live snapshots; until they arrive the shell stays still and the scene waits.
   const officePreferences=useOfficePreferences(live,connected,refresh),preferences=officePreferences.preferences;
+  useLayoutEffect(()=>officeSound.configure(officePreferences.displayed),[officePreferences.displayed]);
   const [osReduced,setOsReduced]=useState(()=>matchMedia('(prefers-reduced-motion: reduce)').matches);
   const reduced=osReduced||(preferences?.reducedMotion??true),quality=preferences?.quality??'high';
   const [visibleTicket,setVisibleTicket]=useState('');
@@ -145,7 +147,7 @@ export default function App(){
   const working=snapshot?.agents.filter(a=>a.id!=='cto'&&a.id!=='knowledge'&&a.activity==='working').length||0;
   const harperStatus=snapshot?.agents.find(a=>a.id==='knowledge')?.activity||'disconnected',activeLessons=snapshot?.knowledge?.lessons.filter(l=>l.status==='active').length||0;
   const goToFloor=(next:Floor)=>{if(next===floor||travelling)return;setSelection(null);setDestination(next);
-    if(reduced){setFloor(next);localStorage.setItem('office.floor',next);setFocus([0,0,0]);setZoom(43);}else{finishedSurfaces.current.clear();setElevatorPhase('preparing');}
+    if(reduced){officeSound.play('doors');setFloor(next);localStorage.setItem('office.floor',next);setFocus([0,0,0]);setZoom(43);}else{finishedSurfaces.current.clear();setElevatorPhase('preparing');}
   };
   const surfaceFinished=(side:string,definition:unknown)=>{
     if((elevatorPhase==='closing'&&definition==='closed')||(elevatorPhase==='opening'&&definition==='open')){
@@ -156,7 +158,7 @@ export default function App(){
   useEffect(()=>{
     if(elevatorPhase==='idle')return;
     const changeFloor=()=>{setFloor(destination);localStorage.setItem('office.floor',destination);setFocus([0,0,0]);setZoom(43);};
-    if(reduced){changeFloor();finishedSurfaces.current.clear();setElevatorPhase('idle');return;}
+    if(reduced){if(elevatorPhase!=='opening')officeSound.play('doors');changeFloor();finishedSurfaces.current.clear();setElevatorPhase('idle');return;}
     if(elevatorPhase==='preparing'){
       // Show the fully open doors for a painted frame before asking Motion to close.
       // Otherwise the visibility change and first transform can land in one busy frame.
@@ -168,7 +170,7 @@ export default function App(){
     // before changing any room/title/roster, then allow the new room to settle.
     let frame=0,hold:ReturnType<typeof setTimeout>|undefined;
     frame=requestAnimationFrame(()=>{frame=requestAnimationFrame(()=>{
-      changeFloor();hold=setTimeout(()=>setElevatorPhase('opening'),240);
+      changeFloor();hold=setTimeout(()=>{officeSound.play('doors');setElevatorPhase('opening');},240);
     });});
     return()=>{cancelAnimationFrame(frame);clearTimeout(hold);};
   },[elevatorPhase,reduced,destination]);

@@ -1,6 +1,8 @@
 ---
 topics: [delivery-and-recovery]
 plans: [2026-11-27-issue-592-retry-transient-github-delivery-stops-bac276030b.md]
+issue: 'https://github.com/jfusco/the-office/issues/592'
+issues: ['https://github.com/jfusco/the-office/issues/592']
 ---
 
 # Retry transient GitHub stops automatically, including at draft

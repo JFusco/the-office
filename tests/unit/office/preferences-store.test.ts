@@ -46,3 +46,11 @@ test('notifies subscribers after commit, isolates failures and unsubscribes', ()
     stop(); store.patch({ quality: 'high' });
     expect(seen).toHaveBeenCalledTimes(1); expect(failing).toHaveBeenCalledTimes(2);
 });
+test('upgrades a historical preferences row without changing its revision or existing values', () => {
+    const db = new DatabaseSync(':memory:'), store = new PreferencesStore(db);
+    const old = { quality: 'low', reducedMotion: true, keyboardShortcuts: false, deliveryToasts: false, coffeeBreaks: true };
+    db.prepare('UPDATE office_preferences SET body=?, revision=8').run(JSON.stringify(old));
+    expect(store.read()).toEqual({ ...OFFICE_PREFERENCE_DEFAULTS, ...old, revision: 8 });
+    expect(store.patch({ settingSounds: true, soundVolume: 0 })).toMatchObject({ ...old, settingSounds: true, soundVolume: 0, revision: 9 });
+    for (const soundVolume of [-1, 101, 1.5, '10']) expect(() => store.patch({ soundVolume })).toThrow();
+});

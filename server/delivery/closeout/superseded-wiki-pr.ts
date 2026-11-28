@@ -16,7 +16,8 @@ import { assertAutomationAuthority } from '../readiness/automation-authority';
 import { assertAutomationEffects } from '../readiness/automation-effects';
 import { adoptionFor, redoFor } from '../repairs/bot-redo/ledger';
 import { reportContainmentStop, waitOnBot } from '../repairs/bot-redo/report';
-import { postProofComment, readProofComment, type ProofComment } from './proof-comment';
+import { postProofComment, readProofComment, type CommentReceipt, type ProofComment } from './proof-comment';
+import { proofCommentQualification } from './proof-comment-qualification';
 import { proveContainment, targetTip } from './wiki-containment';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { BotRedo, DependabotAdoption, Receipt, SupersededWikiClose, TicketJob } from '../../../src/shared';
@@ -98,7 +99,9 @@ async function readBackSent(delivery: GitHubDelivery, job: TicketJob, close: Sup
             const found = step === 'pr-comment' || step === 'issue-comment'
                 ? await readProofComment(store, execute, comment(close, step === 'pr-comment' ? 'pull' : 'issue'), original)
                 : await reads[step]();
-            return { verified: found !== null, receipt: found };
+            // Only the issue comment can carry a designated App trial's evidence; the PR comment and the other steps supply none.
+            const qualification = step === 'issue-comment' && found ? await proofCommentQualification(store, execute, comment(close, 'issue'), sent.id, found as CommentReceipt) : undefined;
+            return { verified: found !== null, receipt: found, ...(qualification ? { qualification } : {}) };
         }).catch(() => false);
         if (!verified) return step;
     }

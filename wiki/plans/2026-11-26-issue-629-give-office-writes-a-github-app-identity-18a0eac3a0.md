@@ -1,7 +1,7 @@
 ---
 status: "partial"
 executed: true
-evidence: ["Delivery 1 on codex/698-app-identity-foundation (JFusco/the-office#698); live gates G1-G3 and deliveries D2-D5 remain on JFusco/the-office#629", "tests/unit/github/identity/route-activation.test.ts"]
+evidence: ["Delivery 1 on codex/698-app-identity-foundation (JFusco/the-office#698). Live evidence and the remaining rollout are tracked in JFusco/the-office#629", "tests/unit/github/identity/route-activation.test.ts", "Issue-comment qualification fixtures in aa009d77 (JFusco/the-office#751). The open-issue trial remains in JFusco/the-office#629"]
 source_tool: "repository"
 source: "/Users/joe.fusco/.codex/review-runs/2e4abe95-d2f5-435b-9c74-605c00214726/final.md"
 topics: ["delivery-and-recovery"]

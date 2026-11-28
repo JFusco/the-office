@@ -2,6 +2,7 @@ import { activeEffectId, harnessEffect } from '../harness/effect';
 import { readRepo } from '../intake/dependabot/qualify';
 import { commentAuthor } from '../parking/park-comment';
 import { savedAuthor } from '../../github/identity/office-authors';
+import { proofCommentQualification } from './proof-comment-qualification';
 import type { Execute } from '../board/project-graphql';
 import type { Store } from '../../store/store';
 import type { EffectIntent, TicketJob } from '../../../src/shared';
@@ -23,9 +24,11 @@ function matchesProofComment(store: Store, c: ProofComment, intent: Readonly<Eff
         payload.marker === c.marker && (payload.body === undefined || payload.body === c.body);
 }
 
-/** After a lost response: the one comment across every page of the intended conversation that starts with the marker and is exactly this comment. */
-async function findProofComment(store: Store, execute: Execute, c: ProofComment, author: string): Promise<CommentReceipt | null> {
+/** Reads the unique exact marker match across the entire conversation. */
+async function findProofComment(store: Store, execute: Execute, c: ProofComment, author: string, requireReadableBodies = false): Promise<CommentReceipt | null> {
     const comments = await readRepo(store, execute, `issues/${c.number}/comments?per_page=100`, true);
+    if (requireReadableBodies && comments.some((item: any) => typeof item?.body !== 'string'))
+        throw new Error('Complete issue comment bodies are required to bind the proof comment pre-state');
     const marked = comments.filter((item: any) => typeof item?.body === 'string' && item.body.startsWith(c.marker));
     if (!marked.length) return null;
     if (marked.length > 1 || !exact(store, c, author, marked[0])) throw new Error(`The comment marked ${c.marker} on ${conversation(store, c)} is not the Office's exact comment; it needs reconciliation`);
@@ -60,6 +63,7 @@ export async function postProofComment(store: Store, execute: Execute, job: Tick
             return { id: posted.id, url: `${conversation(store, c)}#issuecomment-${posted.id}` };
         },
         verify: async receipt => !!await readCommentId(store, execute, c, author, receipt),
-        preState: () => findProofComment(store, execute, c, author),
+        qualify: receipt => proofCommentQualification(store, execute, c, id, receipt),
+        preState: () => findProofComment(store, execute, c, author, c.kind === 'issue'),
         readBack: () => readProofComment(store, execute, c, store.getEffect<CommentIntent['payload']>(id)!) });
 }
