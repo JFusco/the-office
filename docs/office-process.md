@@ -547,7 +547,7 @@ with read-back, and records what it published and for which head (`server/mainte
   GitHub adapter and the saved writer. A fresh write needs the run's own running claim (CMS: its
   maintenance claim; Brain: its `repair-followup` continuation), the run still working, no hold and no
   competing delivery job, checked before admission, after the asynchronous preflight and inside the
-  dispatch transaction beside the writer check. Push checks the full ownership again after credential validation,
+  dispatch transaction, once the writer checks pass. Push checks the full ownership again after credential validation,
   immediately before starting Git. Maintenance has no resend exception.
 - **Recovery.** `GitHubMaintenance.reconcile` first reads back every attempted publication write of the
   run under its saved writer (`reconcile-publication.ts`); an unknown operation or an incomplete read
