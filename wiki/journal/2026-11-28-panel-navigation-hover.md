@@ -1,6 +1,7 @@
 ---
 topics: [office-ui-and-telemetry]
-issue: 'https://github.com/JFusco/the-office/issues/765'
+issue: 'https://github.com/jfusco/the-office/issues/765'
+issues: ['https://github.com/jfusco/the-office/issues/765']
 ---
 
 # Panel navigation hover
