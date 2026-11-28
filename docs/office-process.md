@@ -1440,7 +1440,7 @@ as the Office GitHub App, never by a model's choice.
   repository id and the open, unlocked issue. `check` also requires the conversation to lack the marker and
   admits the trial again after that listing, then stops and sends nothing; it exits zero when the trial is
   bound. `run` sends one comment through the checked proof-comment adapter and Effects as the App
-  (`joe-approved-app-trial`, work `issue`). Its writer selection applies no route transition, admits the
+  (`joe-approved-app-trial`, work `issue`, or `pr` for a pull request trial). Its writer selection applies no route transition, admits the
   trial again after its marker listing and requests the token for the packet's own installation and
   repository ids. The admission runs once more after the token wait, so a refusal there creates no intent.
   The intent's expected state holds the entry digest and the digest of the whole packet. Its preflight
@@ -1474,7 +1474,8 @@ as the Office GitHub App, never by a model's choice.
     inside the approved change digest. A replacement packet with another head, base or id never matches
     the configured entry, even when GitHub agrees with it.
   - **Target checks.** Before the intent exists, and again as the App-scoped credential check, GitHub must
-    show the PR in this repository at the approved head and base, open, unmerged and unlocked.
+    show the PR in this repository at the approved head and base, open, unmerged and unlocked. As with an
+    issue, those facts are last observed by that read and can change before GitHub applies the POST.
   - **Qualification.** Only this operation qualifies a PR conversation comment, with the saved POST ID and
     the bot by login and id. A harness proof comment on a PR records no evidence.
   - **Issue packets** and their payloads and digests are unchanged.
