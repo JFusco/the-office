@@ -152,7 +152,8 @@ test.each([false, true])('a designated proof comment reads its pre-state twice b
         await expect(sent).resolves.toMatchObject({ id: 88 });
         const intent = f.store.getEffect(id)!;
         expect(intent).toMatchObject({ status: 'verified', writer: { login: APP.botLogin } });
-        expect(calls).toEqual(['before admission', 'prepared', 'app:2002', 'exact read-back']);
+        // The second exact read is the trial's qualification read; this record carries no bot account id, so it proves nothing.
+        expect(calls).toEqual(['before admission', 'prepared', 'app:2002', 'exact read-back', 'exact read-back']);
         await expect(readProofComment(f.store, execute, proof, intent)).resolves.toEqual(intent.receipt);
     }
 });

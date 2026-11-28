@@ -4,6 +4,13 @@ import { fakeBotPR, H1, H2, WEEKLY } from '../support/fake-bot-pr';
 import { GENERATOR } from '../../../../server/delivery/closeout/wiki-containment';
 import { adoptDependencyBot } from '../../../../server/delivery/intake/dependency-bots/adopt';
 import { wikiSync } from '../../../../server/delivery/intake/dependency-bots/wiki-sync';
+import { bindGitHubIdentity } from '../../../../server/github/identity/identity-runtime';
+import type { InstallationTokens } from '../../../../server/github/identity/installation-token';
+import { parseGitHubApp } from '../../../../server/github/identity/app-config';
+import { canonicalDigest } from '../../../../server/github/identity/route-entry';
+import { changeDigest } from '../../../../server/github/identity/write-boundary';
+import { currentPrincipal } from '../../../../server/github/identity/write-credential-scope';
+import { APP, appConfig, SYNTHETIC_TOKEN } from '../../github/identity/support/route-fixture';
 
 afterEach(cleanupFakes);
 
@@ -362,6 +369,88 @@ test('proof comment read-back keeps the POST ID across a failed verification GET
     expect(f.store.getEffect(row.id)).toMatchObject({ status: 'verified', receipt: { id: original.id } });
     expect(posted(f, 200)).toHaveLength(1);
     expect(closes(f)).toHaveLength(1);
+});
+
+test.each([
+    ['a designated App trial', 'app', APP.botId, true],
+    ['another account id under the bot login', 'app', 999, false],
+    ['the historical operator', 'operator', undefined, false],
+] as const)('a failed issue-comment verification by %s is settled by read-back with one POST', async (_writer, principal, accountId, qualifies) => {
+    const f = await sameHead();
+    await f.observe();
+    const { id: projectId, repository } = f.store.project;
+    const operation = 'github-issue-comment';
+    const commentsPath = `repos/${repository}/issues/${f.state.issue.number}/comments`;
+    const listing = `${commentsPath}?per_page=100`;
+    const exactRead = (id: number) => `repos/${repository}/issues/comments/${id}`;
+    const expectedPrincipal = principal === 'app' ? `app:${APP.installationId}` : 'operator';
+    let trialEnabled = principal === 'app';
+    const tokens = { token: async () => ({ token: SYNTHETIC_TOKEN }) } as unknown as InstallationTokens;
+    bindGitHubIdentity(f.store, {
+        config: () => {
+            const close = f.job.supersededWikiClose;
+            if (!trialEnabled || !close) return;
+            const id = `harness:${close.job}:${close.operation}:issue-comment`;
+            const target = `https://github.com/${close.repository}/issues/${close.issue}`;
+            const body = close.comments.issue;
+            const payload = { number: close.issue, marker: body.split('\n', 1)[0], body, author: APP.botLogin };
+            return parseGitHubApp(appConfig({}, {
+                repositories: { [projectId]: { repository, repositoryId: APP.repositoryId } },
+                writes: { [projectId]: { comment: { mode: 'qualify', effectId: id, adapter: operation, target,
+                    beforeDigest: canonicalDigest(null), expectedDigest: changeDigest({ id, operation, target, payload }),
+                    installationId: APP.installationId, repositoryId: APP.repositoryId } } },
+            }), [f.store.project]);
+        },
+        tokens: () => tokens,
+        operatorLogin: async () => 'JFusco',
+    });
+
+    const posts: string[] = [], reads: { target: string; principal: string }[] = [];
+    let dispatched: ReturnType<typeof closeEffect>, commentId: number | undefined, failVerification = true;
+    f.state.loseResponse = (_p, args) => {
+        if (args[1] !== commentsPath || !args.includes('POST')) return false;
+        const actualPrincipal = currentPrincipal();
+        const stored = f.state.comments.at(-1)!;
+        commentId = stored.id;
+        posts.push(actualPrincipal);
+        dispatched = closeEffect(f, 'issue-comment');
+        if (actualPrincipal !== 'operator')
+            Object.assign(stored, { user: { login: APP.botLogin, id: accountId }, created_at: f.store.clock.now().toISOString() });
+        return false;
+    };
+    f.state.fail = (_p, args) => {
+        if (commentId === undefined) return false;
+        const byId = args[1] === exactRead(commentId);
+        if (byId || args[1] === listing) reads.push({ target: args[1], principal: currentPrincipal() });
+        if (byId && failVerification) { failVerification = false; return 'HTTP 502: Bad Gateway'; }
+        return false;
+    };
+    await f.step();
+    const sent = f.state.comments.filter(c => c.body.startsWith(marker) && c.issue_url.endsWith('/issues/5'));
+    expect(sent).toHaveLength(1);
+    const byId = exactRead(sent[0].id), url = `${f.issueUrl}#issuecomment-${sent[0].id}`;
+    expect(posts).toEqual([expectedPrincipal]);
+    expect(dispatched).toMatchObject({ status: 'dispatching', writer: { principal, grant: { kind: principal === 'app' ? 'trial' : 'operator' } } });
+    expect(reads).toEqual([{ target: byId, principal: expectedPrincipal }]);
+    const attempted = closeEffect(f, 'issue-comment')!;
+    expect(attempted).toMatchObject({ status: 'uncertain', receipt: { id: sent[0].id, url } });
+    expect(attempted.qualification).toBeUndefined();
+
+    // Observation settles the attempt under its saved writer before the next claimed step.
+    trialEnabled = false;
+    await f.observe();
+    const recoveryTargets = qualifies ? [byId, byId, listing] : principal === 'app' ? [byId, byId] : [byId];
+    expect(reads.slice(1)).toEqual(recoveryTargets.map(target => ({ target, principal: expectedPrincipal })));
+    const settled = closeEffect(f, 'issue-comment')!;
+    expect(settled).toMatchObject({ status: 'verified', receipt: { id: sent[0].id, url } });
+    if (qualifies) expect(settled.qualification).toEqual({ record: url, target: f.issueUrl, transition: 'issue comment created',
+        actor: { login: APP.botLogin, id: APP.botId }, observedAt: expect.any(String) });
+    else expect(settled.qualification).toBeUndefined();
+    expect(closeEffect(f, 'pr-comment')!.qualification).toBeUndefined();
+    await f.step();
+    expect(f.job.status, f.job.detail).toBe('cancelled');
+    expect(posted(f, 5)).toHaveLength(1);
+    expect(posts).toEqual([expectedPrincipal]);
 });
 
 test('a PR reopened after the Office closed it gets no issue comment, issue close or card move', async () => {
