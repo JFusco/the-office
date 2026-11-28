@@ -7,7 +7,7 @@ import { settingsSwitch } from '../sound/interactions';
 import type { OfficePreferencesController } from './useOfficePreferences';
 
 const effects = [
-    { field: 'hoverSound', label: 'Hover', previews: [['hover', 'Play hover']] },
+    { field: 'hoverSound', label: 'Panel navigation hover', previews: [['hover', 'Play hover']] },
     { field: 'settingSounds', label: 'Setting changes', previews: [['on', 'Play on'], ['off', 'Play off']] },
     { field: 'floorSound', label: 'Floor arrivals', previews: [['doors', 'Play doors']] },
 ] as const;
@@ -30,7 +30,7 @@ export function SoundSettings({ controller }: { controller: OfficePreferencesCon
         officeSound.setDraftVolume();
     }
     const volume = draft ?? displayed.soundVolume;
-    const preview = (sound: Sound, label: string) => <Button key={sound} data-sound-preview onClick={() => officeSound.play(sound, true)}>{label}</Button>;
+    const preview = (sound: Sound, label: string) => <Button key={sound} onClick={() => officeSound.play(sound, true)}>{label}</Button>;
     return <Section data-settings-block="sound" onChangeCapture={settingsSwitch}>
         <SectionTitle>Sound</SectionTitle>
         <div className="grid gap-4">
