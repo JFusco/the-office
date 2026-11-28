@@ -65,6 +65,11 @@ try{
     const {incidentCommand}=await import('./incidents/incident-command');
     process.exitCode=await incidentCommand(rawArgs,{base});
   }
+  else if(cmd==='app-trial'){
+    // Checks or sends one approved GitHub App issue-comment trial through the running Office.
+    const {appTrialCommand}=await import('./github/identity/app-trial/trial-command');
+    process.exitCode=await appTrialCommand(rawArgs,{base});
+  }
   else if(cmd==='status'){const r=await fetch(`${base}${scoped("/api/office")}`);console.log(JSON.stringify(await r.json(),null,2));}
   else if(commands[cmd]){
     const r=await fetch(`${base}${scoped("/api/commands")}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:commands[cmd],key,scheduled:args.includes('--scheduled'),authorization:args.includes('--authorized-handover')?'user-directed-handover-2026-10-27':undefined})});
@@ -82,6 +87,6 @@ try{
       }
     }
   }
-  else {console.log('The Office · add --project cms-field-vocabulary to select CMS\n\n  pnpm office projects\n  pnpm office maintenance --project cms-field-vocabulary --scheduled --wait\n  pnpm office status\n  pnpm office baseline [--json]\n  pnpm office release build [COMMIT] | current\n  pnpm office deploy COMMIT | status | resume OPERATION | end OPERATION | pin COMMIT\n  pnpm office incident status INCIDENT | start-repair INCIDENT --issue N --revision R | bind-fix INCIDENT COMMIT|PR --revision R (--bindings FILE | --no-route REASON)\n  pnpm office overseer status | pause [--reason TEXT] | unpause | reconcile-budget RESERVATION --expected-micro-usd N --reason TEXT [--finalize] | pin COMMIT\n  pnpm office outbox\n  pnpm office audit-lessons [--project brain]\n  pnpm office time [CEC-123]\n  pnpm office chat --file message.txt [--ticket CEC-123] --wait\n  pnpm office reply ITEM_ID --file reply.txt --recheck --wait\n  pnpm office intake\n  pnpm office pilot CEC-123\n  pnpm office continue CEC-123\n  pnpm office pause | resume | azure\n\nStart the service first: pnpm start');process.exitCode=cmd?1:0;}
+  else {console.log('The Office · add --project cms-field-vocabulary to select CMS\n\n  pnpm office projects\n  pnpm office maintenance --project cms-field-vocabulary --scheduled --wait\n  pnpm office status\n  pnpm office baseline [--json]\n  pnpm office release build [COMMIT] | current\n  pnpm office deploy COMMIT | status | resume OPERATION | end OPERATION | pin COMMIT\n  pnpm office app-trial check|run --project PROJECT --file PACKET.json\n  pnpm office incident status INCIDENT | start-repair INCIDENT --issue N --revision R | bind-fix INCIDENT COMMIT|PR --revision R (--bindings FILE | --no-route REASON)\n  pnpm office overseer status | pause [--reason TEXT] | unpause | reconcile-budget RESERVATION --expected-micro-usd N --reason TEXT [--finalize] | pin COMMIT\n  pnpm office outbox\n  pnpm office audit-lessons [--project brain]\n  pnpm office time [CEC-123]\n  pnpm office chat --file message.txt [--ticket CEC-123] --wait\n  pnpm office reply ITEM_ID --file reply.txt --recheck --wait\n  pnpm office intake\n  pnpm office pilot CEC-123\n  pnpm office continue CEC-123\n  pnpm office pause | resume | azure\n\nStart the service first: pnpm start');process.exitCode=cmd?1:0;}
 }catch(e){console.error(`Office request failed at ${base}: ${String(e)}`);process.exitCode=1;}
 }
