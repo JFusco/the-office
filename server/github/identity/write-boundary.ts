@@ -24,6 +24,12 @@ export interface GitHubWriteOptions {
      * rejects the write unsent. Not run for the operator on a never-activated route, so nothing changes there.
      */
     credentialCheck?: () => Promise<void>;
+    /**
+     * The one designated trial this caller is approved for. Selection applies no route transition and accepts only that
+     * trial's App grant; the caller's synchronous `admit` runs again after the pre-state read, before any credential
+     * request; and the token is requested for exactly these installation and repository ids.
+     */
+    trial?: { installationId: number; repositoryId: number; admit: () => void };
 }
 type Route = { operation: WriteOperation; mutation: WriteMutation };
 /** The writer selected for one Effect id before its intent exists, or the writer a saved intent already carries. */
@@ -72,7 +78,7 @@ function newWriter(store: Store, config: GitHubAppConfig | undefined, route: Rou
 /**
  * Selects the writer for one GitHub write before `Effects.execute` creates its intent or a caller records a dispatch
  * or create fence. A saved intent keeps its own writer. For a fresh write the route is resolved (committing an
- * explicit promotion or rollback first), the selected credential is acquired, and the route is checked again after
+ * explicit promotion or rollback first, unless the caller names its approved `trial`), the selected credential is acquired, and the route is checked again after
  * that wait. A held route throws `WriteHeld`; an unavailable credential throws `CredentialUnavailable`. Neither
  * creates an intent. Returns undefined for anything that is not a GitHub write of a GitHub project.
  */
@@ -82,17 +88,22 @@ export async function selectGitHubWriter(store: Store, operation: Identified, op
     const runtime = githubIdentity(store), saved = store.getEffect(operation.id);
     if (saved) return { route, writer: saved.writer, credential: saved.status === 'prepared' ? await savedCredential(runtime, route, saved.writer) : undefined };
     const binding = bindingOf(operation, options), request: WriteRequest = { effectId: operation.id, operation: route.operation, binding };
-    const decision = resolveWrite(store, runtime.config(), request, { apply: true });
+    const decision = resolveWrite(store, runtime.config(), request, { apply: !options.trial });
     if (decision.kind === 'hold') throw new WriteHeld(route.operation, decision.reason);
+    if (options.trial && (decision.kind !== 'app' || decision.grant.kind !== 'trial'))
+        throw new WriteHeld(route.operation, 'the route does not select the approved trial');
     if (decision.kind === 'app' && decision.grant.kind === 'trial') {
         if (!options.preState) throw new WriteHeld(route.operation, 'this adapter cannot bind the pre-state a trial needs');
         const before = canonicalDigest(await options.preState());
         if (before !== decision.entry!.beforeDigest) throw new WriteHeld(route.operation, 'the bound pre-state does not match the designated trial');
         binding.beforeDigest = before;
     }
+    // The pre-state read is asynchronous: the approved trial must still stand before a token is requested for it.
+    options.trial?.admit();
     const config = runtime.config();
     let credential: WriteCredential | undefined;
-    if (decision.kind === 'app') credential = await appToken(runtime, route, config!.installationId, config!.repositories[store.project.id].repositoryId);
+    if (decision.kind === 'app') credential = await appToken(runtime, route, options.trial?.installationId ?? config!.installationId,
+        options.trial?.repositoryId ?? config!.repositories[store.project.id].repositoryId);
     else if (decision.mode === 'rollback') { await verifiedOperator(runtime, route.operation); credential = operatorRollbackCredential(); }
     const writer = newWriter(store, config, route, decision, binding);
     // The credential wait is asynchronous: the route must still select this writer.
@@ -117,8 +128,8 @@ export function claimRefusal(store: Store, config: GitHubAppConfig | undefined, 
 /**
  * One GitHub write through Effects with its writer pinned and checked. The selected writer is saved on the fresh intent;
  * the prepared claim re-reads the durable route and the current entry and refuses the writer unsent when they no
- * longer authorize it; dispatch and verification run with that writer's credential. Anything that is not a GitHub
- * write goes to `Effects.execute` unchanged.
+ * longer authorize it, then runs the caller's own `claim`, if any; dispatch and verification run with that writer's
+ * credential. Anything that is not a GitHub write goes to `Effects.execute` unchanged.
  */
 export async function executeGitHubWrite<T, R>(store: Store, operation: EffectOperation<T, R>, options: GitHubWriteOptions = {}, selected?: SelectedWriter): Promise<R> {
     const chosen = selected ?? await selectGitHubWriter(store, operation, options);
@@ -152,6 +163,8 @@ export async function executeGitHubWrite<T, R>(store: Store, operation: EffectOp
             if (decision?.kind === 'operator' && decision.mode === 'rollback') {
                 if (!operatorChecked) return 'The writer was refused at dispatch: the operator was not verified for the committed rollback';
             }
+            // The caller's own synchronous claim check, only after the writer checks above admit the writer.
+            return operation.claim?.(intent);
         },
         dispatch: payload => scoped(() => operation.dispatch(payload)),
         verify: (receipt, payload) => scoped(() => operation.verify(receipt, payload)),

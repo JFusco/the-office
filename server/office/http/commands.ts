@@ -25,6 +25,8 @@ import { requeueWaitedImplement } from '../../delivery/recovery/implementation/r
 import { recoverCTOInput } from '../../conversations/recover-cto-input';
 import { DATA } from '../config';
 import { assertHarnessMayMerge } from '../../delivery/readiness/merge-ceiling';
+import { appTrialComment } from '../../github/identity/app-trial/trial-comment';
+import { command } from '../../workers/process';
 
 /** POST /api/commands: operator and harness commands for one project. */
 export async function commandRoute(req: Request, url: URL, context: ServiceContext & RequestContext): Promise<Response | undefined> {
@@ -37,10 +39,12 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
         const body = await req.text();
         if (body.length > 4096)
             return json({ error: 'Command is too large' }, 413);
-        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, timeClassification, timeScope, discovery, closeoutSupervisionProof, lessonId, knowledge, channel, slackSupersession, lessonPromotion, prMetadataRecovery, historyRetirement, implementationContinuation, qaPlanRetry, qaHandoff } = JSON.parse(body);
+        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, timeClassification, timeScope, discovery, closeoutSupervisionProof, lessonId, knowledge, channel, slackSupersession, lessonPromotion, prMetadataRecovery, historyRetirement, implementationContinuation, qaPlanRetry, qaHandoff, appTrial } = JSON.parse(body);
         if (key && (typeof key !== 'string' || !validTicket(store.project, key)))
             return json({ error: 'Issue key does not belong to this project' }, 400);
         switch (action) {
+            // Joe's approved GitHub App trial: checked against the store, config and GitHub, then sent once through Effects.
+            case 'app-trial-comment': return json(await appTrialComment(store, command, appTrial), 200);
             case 'continue-qa-plan': return json(await requestQAPlanRetry(store, key, qaPlanRetry, DATA, engine.implementationOwnership), 202);
             case 'continue-saved-implementation': return json(await decideImplementation(store, key, implementationContinuation, engine.implementationOwnership), 202);
             case 'recover-cto-input': return json(recoverCTOInput(store, messageId, DATA), 202);

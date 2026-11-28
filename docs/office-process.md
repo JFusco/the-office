@@ -1429,6 +1429,41 @@ as the Office GitHub App, never by a model's choice.
   operator, and a retry suffix needs its own grant. A different target or change on the reserved id holds.
   The trial is verified by the adapter's independent read-back; only actor-bearing evidence (the bot on the
   bound target) qualifies. A lost response is reconciled read-only under the saved App writer.
+- **Issue-comment trial command.** `pnpm office app-trial check|run --project <id> --file <packet.json>`
+  (`server/github/identity/app-trial/`) posts Joe's approved public packet to `/api/commands`, under the
+  service's origin, fence and body-size checks. The packet names the project, repository and id, App,
+  installation, bot login and id, an `office-app-trial:` Effect id, the issue number, id and node id, the
+  marker, the full body and both digests. Before an intent exists, the packet must equal the store project,
+  the `githubApp` block and the pending `comment` entry. Its recomputed change must equal the approved
+  digest, and the route must select that id as the designated App trial; the operator an undesignated id
+  would get is refused. The project must not be paused, draining or holding the issue. GitHub must show the
+  repository id and the open, unlocked issue. `check` also requires the conversation to lack the marker and
+  admits the trial again after that listing, then stops and sends nothing; it exits zero when the trial is
+  bound. `run` sends one comment through the checked proof-comment adapter and Effects as the App
+  (`joe-approved-app-trial`, work `issue`). Its writer selection applies no route transition, admits the
+  trial again after its marker listing and requests the token for the packet's own installation and
+  repository ids. The admission runs once more after the token wait, so a refusal there creates no intent.
+  The intent's expected state holds the entry digest and the digest of the whole packet. Its preflight
+  admits the trial again and re-reads the marker. It then re-reads the repository and then the issue under
+  the App token as the boundary's credential check. Finally, the same synchronous admission runs as the
+  caller's claim, after the boundary's writer checks. A change found at any of these steps rejects the same
+  intent unsent; `run` then answers with that rejected, spent trial and its saved reason, not a refusal.
+  This includes a marker, repository or issue read that fails in the preflight. That failure is also
+  recorded as an unsent rejection, and the approval for the prepared intent is spent.
+  The marker is last observed by the preflight's listing, which finishes before the repository and issue
+  reads, so a competing marker can appear during either read and until GitHub applies the POST. The issue's
+  open, unlocked state is last observed by the issue read and can change after it. No awaited Office step
+  lies between that issue read and the POST, and GitHub has no conditional comment create. After an
+  attempt, a second `run` with the same packet only reads back the saved Effect under its pinned writer,
+  whatever the pending entry says now; the App block must remain for that writer's token. A lost response
+  is recovered only from a complete listing with every body readable. A read-back that fails leaves the
+  attempt and its receipt as they are, and `run` answers with its status, the diagnostic and the same-packet
+  guidance. A prepared intent that was never sent is re-bound against the current config and continues on
+  the same id; the admission runs again after its target read and before its saved writer requests the
+  token, so a change there refuses with the prepared intent left as it was. A rejected trial is spent: no retry or writer successor is ever derived from its id, and
+  only a stored retry or writer successor of the id (not another approved id beneath it) refuses the
+  command. `run` exits zero only for a verified Effect whose read-back qualified the approved bot. It never
+  promotes the route.
 - **Promotion.** `office-app` applies only when every mutation of the route has a verified, actor-bearing
   trial for the full binding, the trials follow the route's latest revocation (or none, on first
   promotion), no proof belongs to an earlier activation, and no unchecked publisher shares the route. One
@@ -1448,7 +1483,8 @@ as the Office GitHub App, never by a model's choice.
   the intent or a caller records a dispatch or create fence (`write-boundary.ts`). The intent saves the
   principal, expected login, binding and its grant. The prepared claim re-reads the route and current entry in
   its transaction. A competing selection leaves the prepared intent and its writer intact. A writer the route
-  no longer authorizes is rejected unsent (`writerRefusedAt`) and a fresh
+  no longer authorizes is rejected unsent (`writerRefusedAt`). A caller's own `claim` runs only after the
+  writer checks pass, and its refusal is recorded the same way. A fresh
   intent follows the route's current principal (`activeEffectId`, or a fixed-id caller's
   `writerSuccessor`). A held route (`WriteHeld`) or unavailable credential (`CredentialUnavailable`) creates
   no intent. Attempted intents keep their original writer for read-back, whatever the configuration says now.
