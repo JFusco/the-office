@@ -40,6 +40,7 @@ import { requireBoundCheckpointRun } from '../incidents/repair/bound-checkpoint-
 import { currentGitHubSource, withGitHubSource } from '../github/call-scope';
 import { quotaLow, type QuotaHold } from '../github/quota-governor';
 import { itRecoveryRequest } from '../it/recovery-request';
+import { ReleaseMarkerRefusal } from '../delivery/publication/release-marker-stop';
 const actions = new Set(['admit-improvement', 'apply-time-scope', 'reconcile-activation', 'repair-pr-conflicts', 'reconcile-scope-repair', 'cleanup-merged-candidate', 'reconcile-validation', 'resume-discovery', 'correct-recovery-time', 'reconcile-implementation', 'refresh', 'poll', 'observe-dependencies', 'check-it', 'reconcile-time', 'reconcile-cost', 'retry-checkpoint', 'reconcile-maintenance', 'reconcile-preparation', 'approve-merge', 'reconcile-review', 'reconcile-base-update', 'reconcile-closeout', 'reconcile-pr-link', 'defer-non-ready', 'adopt-candidate', 'reconcile-native-refresh', 'reconcile-native-delivery', 'reconcile-native-checkpoint', 'check-lesson-issues', 'file-lesson-issue']);
 export const deterministicActions = new Set([ 'retire-incomplete-history', 'admit-improvement', 'apply-time-scope', 'correct-recovery-time', 'refresh', 'poll', 'observe-dependencies', 'reconcile-time', 'reconcile-cost', 'check-lesson-issues', 'file-lesson-issue']);
 export function enqueueRequest(store: Store, action: string, key = '', head = '', lane: HarnessRequest['lane'] = 'delivery'): HarnessRequest {
@@ -237,7 +238,8 @@ async function runRequest(store: Store, engine: Engine, coordinator: Coordinator
     }
     catch (error) {
         request = store.state.coordination!.requests?.find(current => current.id === request.id) || request;
-        request.status = store.state.paused ? 'interrupted' : 'blocked';
+        // A release-marker refusal waits on a person whether or not the Office is paused, as its job does.
+        request.status = store.state.paused && !(error instanceof ReleaseMarkerRefusal) ? 'interrupted' : 'blocked';
         request.detail = String(error);
         request.stop = stopReason(error, store.state.paused, store.clock.now());
     }

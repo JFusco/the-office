@@ -199,3 +199,28 @@ test('a reconcile-implementation request still refuses the handoff to a stopped 
  expect(request.status).toBe('blocked');expect(request.detail).toContain('Saved result candidate or effects are unverified');
  expect(f.job).toMatchObject({stage:'implement',status:'blocked',head:''});expect(f.job.savedPrerequisiteHandoff).toBeUndefined();expect(f.run).not.toHaveBeenCalled();expect(effectRows(f)).toBe(0);
 });
+
+// --- #617: stop-only release-marker classification and the pending-correction guard.
+const markedLog=(sha:string)=>`${sha}\n${oldHead}\ndocs(readme): reword [skip release]\n\0`;
+test('a saved candidate refused for a release marker is persisted blocked on the job and its owning request, with the prior head and no return',async()=>{
+ const f=fixture(),r=f.prepareRecovery();r.request.status='queued';
+ const impl=f.execute.getMockImplementation()!;f.execute.mockImplementation(async(bin:string,args:string[],options?:any)=>bin==='git'&&args[0]==='log'&&args[1]==='-z'?markedLog(head):(impl as any)(bin,args,options));
+ vi.spyOn(processTools,'command').mockImplementation(f.execute as any);
+ const coordinator:any={sessionBridge:{refresh:vi.fn(),forProject:vi.fn(()=>({complete:true,fresh:true,ownership:{status:'clear'}}))}};
+ await withAssignment(r.reader,'delivery',()=>executeRequest(f.store,f.engine,coordinator,r.request));
+ // The fixture's remote shows no target, so the introduced commits cannot be told: an incomplete-coverage refusal.
+ expect(r.request).toMatchObject({status:'blocked',stop:{kind:'release-marker',releaseMarker:{reason:'indeterminate',diagnostic:expect.stringContaining('target branch was not observed')}}});
+ expect(f.job).toMatchObject({status:'blocked',head:oldHead,stop:{kind:'release-marker'}});
+ expect(f.job.savedPrerequisiteHandoff).toBeUndefined();expect(f.job.releaseMarkerReturns).toBeUndefined();
+});
+test('a pending release-marker correction is never handed off, directly or through the scheduler; the ordinary handoff still runs',async()=>{
+ const f=fixture(),r=f.prepareRecovery();
+ f.job.releaseMarkerReturns={w:{workId:'w',claimId:'c',originalWorkId:'w',at:'2026-11-20T00:00:00Z',status:'pending',boundary:oldHead,branch:'codex/fixture-100',worktree:f.job.worktree,refusedHead:head,refusedTree:'t'.repeat(40),offending:[],publication:{candidate:'',target:oldHead,pullRequests:0,observedAt:''},step:0}};
+ await expect(r.perform()).rejects.toThrow('A pending release-marker correction must settle before a saved-prerequisite handoff');
+ r.request.status='queued';vi.spyOn(processTools,'command').mockImplementation(f.execute as any);
+ const coordinator:any={sessionBridge:{refresh:vi.fn(),forProject:vi.fn(()=>({complete:true,fresh:true,ownership:{status:'clear'}}))}};
+ await withAssignment(r.reader,'delivery',()=>executeRequest(f.store,f.engine,coordinator,r.request));
+ expect(r.request).toMatchObject({status:'blocked',detail:expect.stringContaining('pending release-marker correction')});
+ expect(f.job.head).toBe(oldHead);expect(f.job.savedPrerequisiteHandoff).toBeUndefined();
+ // The ordinary control, the same saved result handed off without a pending correction, is 'existing original-qualified recovery' above.
+});

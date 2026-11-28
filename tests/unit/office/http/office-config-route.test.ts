@@ -21,9 +21,9 @@ test('projects only allowlisted fields, deriving GitHub boards and nulling missi
     const summary = officeConfigSummary(inputs);
     expect(summary).toEqual({
         projects: [
-            { id: 'cec', name: 'CEC', provider: 'azure', repository: 'cec-repo', target: 'staging', boardName: 'CEC Jira board', boardUrl: 'https://example.atlassian.net/board', policy: { merge: 'human', handsOff: false, checkpoint: { hour: 9, weekends: false } } },
-            { id: 'gh', name: 'Fixture', provider: 'github', repository: 'owner/fixture', target: 'main', boardName: 'Fixture GitHub board', boardUrl: 'https://github.com/users/owner/projects/1', policy: { merge: 'harness', handsOff: false, checkpoint: { hour: 17, weekends: true } }, autoAdopt: { bots: [], source: 'none' } },
-            { id: 'bare', name: 'Bare', provider: 'github', repository: 'owner/bare', target: 'main', boardName: null, boardUrl: null, policy: { merge: 'harness', handsOff: false, checkpoint: { hour: 17, weekends: true } }, autoAdopt: { bots: [], source: 'none' } },
+            { id: 'cec', name: 'CEC', provider: 'azure', repository: 'cec-repo', target: 'staging', boardName: 'CEC Jira board', boardUrl: 'https://example.atlassian.net/board', policy: { merge: 'human', handsOff: false, releaseMarkerCheck: false, checkpoint: { hour: 9, weekends: false } } },
+            { id: 'gh', name: 'Fixture', provider: 'github', repository: 'owner/fixture', target: 'main', boardName: 'Fixture GitHub board', boardUrl: 'https://github.com/users/owner/projects/1', policy: { merge: 'harness', handsOff: false, releaseMarkerCheck: false, checkpoint: { hour: 17, weekends: true } }, autoAdopt: { bots: [], source: 'none' } },
+            { id: 'bare', name: 'Bare', provider: 'github', repository: 'owner/bare', target: 'main', boardName: null, boardUrl: null, policy: { merge: 'harness', handsOff: false, releaseMarkerCheck: false, checkpoint: { hour: 17, weekends: true } }, autoAdopt: { bots: [], source: 'none' } },
         ],
         cec: { site: 'https://example.atlassian.net', organization: 'https://dev.azure.com/example', project: 'example', repository: 'cec-repo', target: 'staging' },
         holds: [{ key: 'CEC-1', reason: 'Fixture hold reason.' }],
@@ -38,7 +38,7 @@ test('each bound Jira/Azure project shows its own allowlisted connection and res
     const summary = officeConfigSummary({ ...inputs, projects: [inputs.projects[0], acme, inputs.projects[1]], bindings, policies: new Map([['gh', { handsOff: true }]]) });
     expect(summary.projects[0]).toMatchObject({ id: 'cec', jira: { site: 'https://example.atlassian.net', projectKey: 'CEC', intakeStatuses: ['To Do', 'Open'], defaultPickup: 'To Do' }, azure: { organization: 'https://dev.azure.com/example', project: 'example' } });
     expect(summary.projects[1]).toEqual({ id: 'acme', name: 'Acme', provider: 'azure', repository: 'acme-web', target: 'develop', boardName: null, boardUrl: null,
-        policy: { merge: 'human', handsOff: false, checkpoint: { hour: 17, weekends: true } },
+        policy: { merge: 'human', handsOff: false, releaseMarkerCheck: false, checkpoint: { hour: 17, weekends: true } },
         jira: { site: 'https://acme.example.net', projectKey: 'ACME', intakeStatuses: ['Selected', 'Ready'], defaultPickup: 'Selected' },
         azure: { organization: 'https://dev.azure.com/acme', project: 'Acme' } });
     expect(summary.projects[2]).toMatchObject({ id: 'gh', policy: { handsOff: true } });
@@ -76,4 +76,12 @@ test('serves the projection on GET, rejects other methods and ignores other path
     expect((await response.json()).holds).toEqual([]);
     expect((await call('POST'))!.status).toBe(405);
     expect(await call('GET', '/api/office')).toBeUndefined();
+});
+
+test('each project summary carries the effective release-marker opt-in: the CMS default, an explicit false, and off elsewhere', () => {
+    const cms = { id: 'cms-field-vocabulary', name: 'CMS', provider: 'github' as const, repo: '/tmp/cms', repository: 'JFusco/cms-field-vocabulary', target: 'main' };
+    const on = officeConfigSummary({ ...inputs, projects: [...inputs.projects, cms] });
+    expect(on.projects.map(project => [project.id, project.policy?.releaseMarkerCheck])).toEqual([['cec', false], ['gh', false], ['bare', false], ['cms-field-vocabulary', true]]);
+    const off = officeConfigSummary({ ...inputs, projects: [cms], policies: new Map([['cms-field-vocabulary', { releaseMarkerCheck: false }]]) });
+    expect(off.projects[0].policy).toMatchObject({ handsOff: true, releaseMarkerCheck: false });
 });

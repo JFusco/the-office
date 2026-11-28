@@ -60,8 +60,17 @@ export const FreshResultSchema = LegacyResultSchema.extend({ resolution: Resolut
 /** Current worker output: a provider-wait may name the npm release it waits for. Older saved results still parse as Fresh or Legacy. */
 export const CurrentResultSchema = LegacyResultSchema.extend({ resolution: ResolutionSchema.extend({ release: ReleaseWaitSchema.nullable() }).strict().nullable() }).strict();
 export const OfficeQAResultSchema = CurrentResultSchema.extend({ qa: CurrentOfficeQAReportSchema.nullable() }).strict();
+/**
+ * A read-only developer's messages-only correction of commits refused for a `[skip release]` package change (#617):
+ * replacement full messages for authorized SHAs, which the harness applies. A passing correction names at least one;
+ * the harness checks that (`server/delivery/publication/marker-correction.ts`).
+ */
+export const ReleaseMarkerCorrectionResultSchema = CurrentResultSchema.extend({
+    messages: z.array(z.object({ sha: z.string().regex(/^[a-f0-9]{40}$/), message: z.string().min(1) }).strict()).max(100),
+}).strict();
+export type ReleaseMarkerCorrectionResult = z.infer<typeof ReleaseMarkerCorrectionResultSchema>;
 // Historical provider bytes remain historical: parsing never inserts a resolution field.
-export const ResultSchema = z.union([CurrentResultSchema.extend({ qa: OfficeQAReportSchema.nullable() }).strict(), CurrentResultSchema, FreshResultSchema, LegacyResultSchema]);
+export const ResultSchema = z.union([CurrentResultSchema.extend({ qa: OfficeQAReportSchema.nullable() }).strict(), CurrentResultSchema, FreshResultSchema, LegacyResultSchema, ReleaseMarkerCorrectionResultSchema]);
 const IntakeSchema = z.object({ tickets: z.array(z.object({ key: z.string(), summary: z.string(), type: z.string(), status: z.string(), statusId: z.string(), assignee: z.string(), subtask: z.boolean(), boardMember: z.boolean(), url: z.string(), updated: z.string() }).strict()), summary: z.string(), complete: z.boolean(), blocker: z.string() }).strict();
 export class Agents extends WorkerRuntime {
     override async run<T>(role: Role, task: string, schema: z.ZodType<T>, opts: Parameters<WorkerRuntime['run']>[3] = {}): Promise<T> {

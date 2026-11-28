@@ -89,3 +89,17 @@ test('a mailbox checkpoint takes a repair restriction only from the run behind a
     s.state.intake = { status: 'blocked', lastChecked: 'o', error: said } as any;
     expect(read()).toMatchObject({ author: 'harness', failure: 'authentication' });
 });
+
+test('a current typed release-marker stop is the harness\'s on a job and on its reconciliation request, before any model wording', () => {
+    const s = store(), c = s.state.coordination!;
+    const stop = { kind: 'release-marker', at: 'a', releaseMarker: { reason: 'indeterminate', disposition: 'refusal', paths: [], inventoryPaths: [], diagnostic: 'tool unavailable' } };
+    c.jobs = [job({ detail: 'Error: the package could not be shown unchanged', stop, steps: [{ stage: 'review', result: { outcome: 'blocked', blocker: 'the package could not be shown unchanged', summary: '', receipts: [] } }] })];
+    s.state.workLog = [{ id: 'run-1', requestId: 'job-1', status: 'completed', stage: 'github-review' }] as any;
+    expect(stoppedRecord(s.state, ref('delivery', 'job-1'), 'review')).toMatchObject({ author: 'harness', kind: 'release-marker', stop, facts: { stopKind: 'release-marker' } });
+    // The same wording with an ordinary stop is still the model's.
+    c.jobs = [job({ detail: 'Error: the package could not be shown unchanged', stop: { kind: 'unclassified', at: 'a' }, steps: [{ stage: 'review', result: { outcome: 'blocked', blocker: 'the package could not be shown unchanged', summary: '', receipts: [] } }] })];
+    expect(stoppedRecord(s.state, ref('delivery', 'job-1'), 'review')).toMatchObject({ author: 'model' });
+    c.requests = [{ id: 'req-1', action: 'reconcile-implementation', key: 'GH-12', head: 'w', requestedAt: 'r', status: 'blocked', detail: 'Error: x', lane: 'delivery', stop }] as any;
+    s.state.workLog = [{ id: 'run-2', requestId: 'req-1', status: 'completed', stage: 'implementation-readback' }] as any;
+    expect(stoppedRecord(s.state, ref('reconciliation', 'req-1'), 'reconcile-implementation')).toMatchObject({ author: 'harness', kind: 'release-marker', stop });
+});

@@ -39,7 +39,7 @@ export interface IncidentSubject {
     /** One stop of this subject; a later stop for the same cause is a new episode. */
     episode: string;
     stage: string;
-    stop: { kind: string; at: string } | null;
+    stop: { kind: string; at: string; releaseMarker?: import('./release-marker').ReleaseMarkerStop } | null;
     lastWorker: string;
     /** The candidate head the handler recorded, in that handler's own meaning. */
     head: string;

@@ -114,7 +114,7 @@ test('post-push head observation stops after five reads without repeating the pu
         const out = await f.execute(program, args, options);
         if (program === 'gh' && args[0] === 'api' && args[1].endsWith('/pulls/200')) {
             reads++;
-            return JSON.stringify({ ...JSON.parse(out), head: { sha: HEAD, ref: job.branch } });
+            return JSON.stringify({ ...JSON.parse(out), head: { sha: HEAD, ref: job.branch, repo: { full_name: 'JFusco/cms-field-vocabulary' } } });
         }
         return out;
     };
@@ -212,4 +212,135 @@ test('a lost push response is settled by reading the branch under its original i
     expect(f.store.getEffect(id)).toMatchObject({ status: 'verified', writer: sent.writer, dispatchedAt: sent.dispatchedAt });
     expect(f.state.calls.filter(c => c.startsWith('git push'))).toHaveLength(1);
     expect(f.state.calls.filter(c => c.startsWith('gh pr create'))).toHaveLength(1);
+});
+
+// --- #617: a [skip release] commit that changes the npm package is refused before any push intent.
+import { PROJECT_POLICY_INPUTS } from '../../../../server/office/projects';
+import { markedPublication } from '../support/marker-publication';
+import { cleanupMarkerRepos } from '../support/marker-repo';
+import { ReleaseMarkerRefusal } from '../../../../server/delivery/publication/release-marker-stop';
+afterEach(cleanupMarkerRepos);
+
+const PROVIDER = /^(gh |git (ls-remote|push|remote|fetch) )/;
+/** Run one publication with the CMS opt-in on or off, keeping the provider calls and every other command apart. */
+async function withCheck<T>(on: boolean, run: () => Promise<T>): Promise<T> {
+    const inputs = PROJECT_POLICY_INPUTS as Map<string, object>, saved = inputs.get('cms-field-vocabulary');
+    if (!on) inputs.set('cms-field-vocabulary', { ...saved, releaseMarkerCheck: false });
+    try { return await run(); } finally { if (saved) inputs.set('cms-field-vocabulary', saved); else inputs.delete('cms-field-vocabulary'); }
+}
+const pushRows = (f: { store: any; job: any }) => [0, 1, 2].map(n => f.store.getEffect(`harness:${f.job.id}:push:${f.job.head}${n ? `:retry-${n}` : ''}`)).filter(Boolean);
+const refused = async (promise: Promise<unknown>) => { try { await promise; } catch (error) { if (error instanceof ReleaseMarkerRefusal) return error.evidence; throw error; } throw new Error('expected a release-marker refusal'); };
+
+test('unmarked create and descendant publication make the baseline provider calls, both refs in the one create probe, and no npm call', async () => {
+    const runs: { provider: string[]; other: string[] }[] = [];
+    for (const on of [false, true]) {
+        const f = fakeGitHub(), job = f.candidate({ stage: 'draft' }), root = f.artifactRoot(job);
+        writeFileSync(resolve(root, 'pr.json'), JSON.stringify(CONTENT));
+        await withCheck(on, () => claimedDelivery(f.store, job, () => publishCandidate(f.store, f.execute as any, f.delivery.jobs, job, root)));
+        job.pr = 200; job.head = 'c'.repeat(40); f.state.local.head = job.head;
+        await withCheck(on, () => claimedDelivery(f.store, job, () => publishCandidate(f.store, f.execute as any, f.delivery.jobs, job, root)));
+        runs.push({ provider: f.state.calls.filter(call => PROVIDER.test(call)), other: f.state.calls.filter(call => !PROVIDER.test(call)) });
+    }
+    const [baseline, checked] = runs, probe = `git ls-remote --heads origin refs/heads/codex/5-restore-release-scans`;
+    const create = baseline.provider.indexOf(probe);
+    expect(checked.provider).toEqual(baseline.provider.map((call, index) => index === create ? `${probe} refs/heads/main` : call));
+    expect(checked.provider.filter(call => call === `${probe} refs/heads/main`)).toHaveLength(1);
+    expect(checked.provider.filter(call => call.startsWith('git push'))).toHaveLength(2);
+    // Only local history reads are added: no npm, no snapshot, no other process.
+    const added = checked.other.filter(call => !baseline.other.includes(call));
+    expect(added.filter(call => !/^git (rev-parse --is-shallow-repository|cat-file -e|log -z |merge-base --is-ancestor )/.test(call))).toEqual([]);
+    expect(checked.other.some(call => call.startsWith(process.execPath) || /read-tree|checkout-index|ls-tree/.test(call))).toBe(false);
+});
+
+test('a marker carried only by target commits merged in through update-base, or with no recorded base, needs no npm and no extra provider call', async () => {
+    for (const base of [true, false]) {
+        const f = markedPublication();
+        f.git(['checkout', '-q', 'main']);
+        const target = f.commit({ 'OPERATING.md': 'operating 2\n' }, 'docs(operating): reconcile [skip release]');
+        f.git(['checkout', '-q', f.job.branch]);
+        f.commit({ 'wiki/index.md': 'wiki 2\n' }, 'docs(wiki): candidate');
+        f.git(['merge', '-q', '--no-edit', '-m', 'chore(merge): update base', 'main']);
+        f.at(f.git(['rev-parse', 'HEAD']).trim());
+        f.state.targetTip = target;
+        if (!base) delete f.job.candidateBase;
+        expect(await claimedDelivery(f.store, f.job, () => publishCandidate(f.store, f.execute as any, f.delivery.jobs, f.job, f.root))).toMatchObject({ created: true, pushed: true });
+        expect(f.npm).toHaveLength(0);
+        expect(f.provider.filter(call => call.startsWith('git ls-remote'))).toEqual([`git ls-remote --heads origin refs/heads/${f.job.branch} refs/heads/main`, `git ls-remote --heads origin refs/heads/${f.job.branch}`]);
+    }
+});
+
+test('a marked package change is refused on create with zero pushes and zero push rows, retries included', async () => {
+    const f = markedPublication();
+    const marked = f.commit({ 'README.md': 'readme 2\n', 'wiki/index.md': 'wiki 2\n' }, 'docs(readme): source acceptance [skip release]');
+    f.at(marked);
+    const stop = await refused(claimedDelivery(f.store, f.job, () => publishCandidate(f.store, f.execute as any, f.delivery.jobs, f.job, f.root)));
+    expect(stop).toMatchObject({ reason: 'marked-package-change', commit: marked, paths: ['README.md'] });
+    expect(f.state.calls.filter(call => call.startsWith('git push'))).toHaveLength(0);
+    expect(pushRows(f)).toEqual([]);
+    expect(f.npm.filter(call => call.args[1] === 'pack').map(call => call.args.slice(1))).toEqual([['pack', '--dry-run', '--json', '--ignore-scripts', '--offline'], ['pack', '--dry-run', '--json', '--ignore-scripts', '--offline']]);
+    // The same refusal again still writes nothing.
+    await refused(claimedDelivery(f.store, f.job, () => publishCandidate(f.store, f.execute as any, f.delivery.jobs, f.job, f.root)));
+    expect(pushRows(f)).toEqual([]);
+});
+
+test('a target rewind and stale tracking refs never hide a marked commit; a missing target object or shallow history stops as incomplete coverage', async () => {
+    const f = markedPublication();
+    const marked = f.commit({ 'README.md': 'readme 2\n' }, 'docs(readme): reword [skip release]');
+    f.git(['checkout', '-q', 'main']); f.git(['merge', '-q', '--ff-only', f.job.branch]); f.git(['checkout', '-q', f.job.branch]);
+    const head = f.commit({ 'wiki/index.md': 'wiki 2\n' }, 'docs(wiki): after');
+    f.at(head);
+    // The remote target was rewound to the base, though the local tracking ref still shows the marked commit.
+    f.git(['update-ref', 'refs/remotes/origin/main', marked]);
+    f.state.targetTip = f.base;
+    expect(await refused(claimedDelivery(f.store, f.job, () => publishCandidate(f.store, f.execute as any, f.delivery.jobs, f.job, f.root)))).toMatchObject({ reason: 'marked-package-change', commit: marked });
+    f.state.targetTip = 'f'.repeat(40);
+    const missing = await refused(claimedDelivery(f.store, f.job, () => publishCandidate(f.store, f.execute as any, f.delivery.jobs, f.job, f.root)));
+    expect(missing).toMatchObject({ reason: 'indeterminate', diagnostic: expect.stringContaining('not in this repository') });
+    // Only the first, decidable check probed npm once and packed its two revisions.
+    expect(f.npm.map(call => call.args[1])).toEqual(['--version', 'pack', 'pack']);
+    f.state.targetTip = f.base;
+    // A shallow boundary inside the range: what lies beyond it cannot be known.
+    writeFileSync(resolve(f.worktree, '.git', 'shallow'), `${marked}\n`);
+    expect(await refused(claimedDelivery(f.store, f.job, () => publishCandidate(f.store, f.execute as any, f.delivery.jobs, f.job, f.root)))).toMatchObject({ reason: 'indeterminate', diagnostic: expect.stringContaining('shallow') });
+    expect(f.state.calls.filter(call => call.startsWith('git push'))).toHaveLength(0);
+    expect(pushRows(f)).toEqual([]);
+});
+
+test('an admitted marked push rechecks the live refs: movement before admission writes no row, movement in preflight leaves one rejected undispatched row', async () => {
+    for (const moveAt of [2, 3]) {
+        const f = markedPublication();
+        f.at(f.commit({ 'wiki/index.md': 'wiki 2\n', 'scripts/wiki/graph/data/graph.json': '{"n":2}\n' }, 'docs(wiki): reconcile [skip release]'));
+        let probes = 0;
+        const execute = async (program: string, args: string[], options: any) => {
+            if (program === 'git' && args[0] === 'ls-remote' && args.includes('refs/heads/main') && ++probes === moveAt) f.state.targetTip = f.job.head;
+            return f.execute(program, args, options);
+        };
+        const stop = await refused(claimedDelivery(f.store, f.job, () => publishCandidate(f.store, execute as any, f.delivery.jobs, f.job, f.root)));
+        expect(stop).toMatchObject({ reason: 'indeterminate', diagnostic: expect.stringContaining('remote refs moved after the release-marker check') });
+        expect(f.state.calls.filter(call => call.startsWith('git push'))).toHaveLength(0);
+        const rows = pushRows(f);
+        if (moveAt === 2) expect(rows).toEqual([]);
+        else expect(rows).toEqual([expect.objectContaining({ status: 'rejected', dispatchedAt: '', error: expect.stringContaining('remote refs moved after the release-marker check') })]);
+    }
+    // Unmoved, the same marked wiki-only candidate is pushed once under the ordinary Effect.
+    const f = markedPublication();
+    f.at(f.commit({ 'wiki/index.md': 'wiki 2\n' }, 'docs(wiki): reconcile [skip release]'));
+    expect(await claimedDelivery(f.store, f.job, () => publishCandidate(f.store, f.execute as any, f.delivery.jobs, f.job, f.root))).toMatchObject({ created: true, pushed: true });
+    expect(pushRows(f)).toEqual([expect.objectContaining({ status: 'verified' })]);
+});
+
+test('a descendant publication binds the PR read to this repository and target, then refuses a marked package change before any new row', async () => {
+    const f = markedPublication();
+    f.at(f.commit({ 'wiki/index.md': 'wiki 2\n' }, 'docs(wiki): first'));
+    await claimedDelivery(f.store, f.job, () => publishCandidate(f.store, f.execute as any, f.delivery.jobs, f.job, f.root));
+    f.job.pr = 200;
+    const marked = f.commit({ 'OPERATING.md': 'operating 2\n' }, 'docs(operating): reword [skip release]');
+    f.at(marked);
+    f.state.prs[0].base.sha = f.base;
+    expect(await refused(claimedDelivery(f.store, f.job, () => publishCandidate(f.store, f.execute as any, f.delivery.jobs, f.job, f.root)))).toMatchObject({ reason: 'marked-package-change', commit: marked, paths: ['OPERATING.md'] });
+    expect(f.state.calls.filter(call => call.startsWith('git push'))).toHaveLength(1);
+    expect(pushRows(f)).toEqual([]);
+    // A PR that does not show this repository's head is not an observation the check can use.
+    f.state.prs[0].head.repo = { full_name: 'someone/fork' };
+    expect(await refused(claimedDelivery(f.store, f.job, () => publishCandidate(f.store, f.execute as any, f.delivery.jobs, f.job, f.root)))).toMatchObject({ reason: 'indeterminate', diagnostic: expect.stringContaining('exact identity') });
 });

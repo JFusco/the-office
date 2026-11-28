@@ -21,6 +21,9 @@ import { writerRestartInstruction } from '../attempts/restart-instruction';
 import { applyReviewWait, readReviewWait } from '../readiness/review-wait';
 import { maintenanceVerifiedDraft, returnDraftToPromotion } from '../publication/maintenance-verified-draft';
 import { stopReason } from './stop-reason';
+import { persistMarkerStop } from '../publication/marker-interruption';
+import { assertCorrectionCheckout, runMarkerCorrection, startWorking } from '../publication/marker-correction-task';
+import { observeWriterCheckout } from '../publication/return-marked-candidate';
 import { endDeliveryQuota, noteDeliveryStop } from '../attempts/stop-evidence';
 import { assertNoModelFallback } from '../attempts/retry-entry';
 import { redispatchSavedAssessment } from '../recovery/redispatch-assessment';
@@ -133,12 +136,12 @@ export class GitHubDelivery {
     async queueSourceRepair(job: TicketJob, result: StageResult, root: string) { return queueSourceRepair.call(this, job, result, root); }
     async step(job: TicketJob) {
         bindDelivery(this.store, job, job.id);
-        job.status = 'working';
-        delete job.stop;
-        this.store.emit('github-delivery-stage', `${job.key} · ${job.stage}`, 'pm', job.key);
+        // The job working, a pending release-marker correction bound to this claim, and the stage event commit together.
+        const unbound = startWorking(this.store, job, () => this.store.emit('github-delivery-stage', `${job.key} · ${job.stage}`, 'pm', job.key));
         const project = this.store.project, root = resolve(this.store.dataRoot, 'ticket-work', job.id);
         mkdirSync(root, { recursive: true });
         try {
+            if (unbound) throw unbound;
             assertDeliveryMayMutate(this.store, this.jobs, job, job.head);
             if (job.implementationContinuation && (this.store.state.paused || holdReason(this.store.project, job.key))) throw new Error('Continuation is paused or held');
             if (handsOff(this.store) && holdReason(this.store.project, job.key)) throw new Error(`${job.key} is held: ${holdReason(this.store.project, job.key)}`);
@@ -170,6 +173,7 @@ export class GitHubDelivery {
                 const expectedHead = job.head;
                 const assertCurrent = () => assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
                 assertCurrent();
+                await assertCorrectionCheckout(this, job);
                 await createCandidate(this.store, this.execute, job, issue, assertCurrent);
                 await moveLane(this.store, this.execute, job, 'In progress', assertCurrent);
             }
@@ -283,16 +287,21 @@ export class GitHubDelivery {
                 instructions += `\n${job.stage === 'prepare-pr' || !harnessDelivers(this.store, job) ? '' : BOARD_RULE}\n${DECISION_RULE}`;
             const candidateAtStart = JSON.stringify({ id: job.id, stage: job.stage, head: job.head, branch: job.branch, worktree: job.worktree });
             const expectedHead = job.head;
+            const writerCheckout = await observeWriterCheckout(this, job);
             const harnessResult = await savedQAResult(this, job) ?? await runHarnessStage(this, job, root, readyChecks);
             if (!harnessResult) { assertNoModelFallback(job); assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead); }
-            const result: StageResult = harnessResult ?? await this.engine.agents.run(role, deliveryTask({ store: this.store, project, job, root, issue, instructions, policyInstruction, discoveryNote, technicalPhase, recoveredFindingIds }), ResultSchema, { officeQA: job.stage === 'validate', artifactsRoot: root, cwd: job.worktree || project.repo, readOnly: ['review', 'lead-pr'].includes(job.stage), ticket: job.key, stage: `github-${job.stage}`, requestId: job.id, enqueuedAt: job.requestedAt, timeout: qaTimeLimit(job.stage === 'validate', job.approach) ?? 60 * 60 * 1000, inactivityTimeout: STAGE_STALL_LIMIT_MS });
+            const correction = harnessResult ? undefined : await runMarkerCorrection(this, job, { store: this.store, root, inputSha256, beforeWorkers,
+                task: text => deliveryTask({ store: this.store, project, job, root, issue, instructions: text, policyInstruction, discoveryNote, technicalPhase, recoveredFindingIds }) });
+            if (correction?.kind === 'settled') return;
+            const result: StageResult = correction?.result ?? harnessResult ?? await this.engine.agents.run(role, deliveryTask({ store: this.store, project, job, root, issue, instructions, policyInstruction, discoveryNote, technicalPhase, recoveredFindingIds }), ResultSchema, { officeQA: job.stage === 'validate', artifactsRoot: root, cwd: job.worktree || project.repo, readOnly: ['review', 'lead-pr'].includes(job.stage), ticket: job.key, stage: `github-${job.stage}`, requestId: job.id, enqueuedAt: job.requestedAt, timeout: qaTimeLimit(job.stage === 'validate', job.approach) ?? 60 * 60 * 1000, inactivityTimeout: STAGE_STALL_LIMIT_MS });
             if (job.stage === 'validate' && !harnessResult) saveQAReport(result, officeQADirectory(root, 'validate', job.steps.filter(s => s.stage === 'validate').length), root);
             try { assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead); }
             catch (error) {
                 job.steps.push({ stage: 'superseded-stage-result', result: structuredClone(result) });
                 throw new Error('Delivery authority changed after execution; result retained for reconciliation', { cause: error });
             }
-            await acceptStageResult.call(this, { officeQA: job.stage === 'validate' && job.qaProtocol === 'office-v1' && !harnessResult, job, result, project, root, issue, role, continuation, reviewStart, inputSha256, beforeWorkers, candidateAtStart, technicalPhase });
+            await acceptStageResult.call(this, { officeQA: job.stage === 'validate' && job.qaProtocol === 'office-v1' && !harnessResult, job, result, project, root, issue, role, continuation, reviewStart, inputSha256, beforeWorkers, candidateAtStart, technicalPhase,
+                writerCheckout, markerCorrection: correction?.acceptance });
             retireRefusedQA(job);
         }
         catch (error) {
@@ -303,6 +312,8 @@ export class GitHubDelivery {
             job.detail = String(error);
             // Only a job kept watching is labelled a provider wait; the same read anywhere else is a stop like any other.
             job.stop = stopReason(waiting && error instanceof CheckStillFinishing ? new CurrentChecksWait(error.message) : error, this.store.state.paused, this.store.clock.now());
+            // A release-marker refusal, or a correction it interrupted, waits on a person and outranks a pause.
+            await persistMarkerStop(this, job, error);
             noteDeliveryStop(this.store, job, error, this.store.clock.now());
             this.store.emit(waiting ? 'github-checks-waiting' : 'github-delivery-blocked', shortSummary(job.detail), 'pm', job.key);
         }

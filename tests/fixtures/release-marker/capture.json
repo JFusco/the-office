@@ -1,0 +1,20 @@
+{
+  "purpose": "Genuine npm pack inventories of JFusco/cms-field-vocabulary for the #617 release-marker tests.",
+  "source": {
+    "repository": "JFusco/cms-field-vocabulary",
+    "parent": "2c78305d97330b085cc172a358ff08710a93f375",
+    "commit": "d3ae220f66b70044d3f1b6ce0da15d3bab6d259b",
+    "relation": "d3ae220f is the direct, single-parent child of 2c78305d; its message carries [skip release]",
+    "changed": ["OPERATING.md", "README.md", "scripts/wiki/graph/data/graph.json", "wiki/connections.md", "wiki/journal/2026-11-23-require-explicit-observation-acceptance.md", "wiki/topics/official-source-freshness.md"]
+  },
+  "snapshot": "git archive of each commit into private scratch; the CMS checkout itself was only read",
+  "toolchain": { "node": "24.14.0", "npm": "11.9.0" },
+  "command": ["npm", "pack", "--dry-run", "--json", "--ignore-scripts", "--offline"],
+  "environment": ["PATH", "HOME", "npm_config_cache", "npm_config_userconfig", "npm_config_globalconfig", "npm_config_workspaces=false", "npm_config_ignore_scripts=true", "npm_config_offline=true", "npm_config_update_notifier=false", "npm_config_fund=false", "npm_config_audit=false"],
+  "lifecycleSentinels": {
+    "scripts": ["prepare", "prepack", "postpack", "prepublishOnly", "preprepare", "postprepare", "prepublish", "publish"],
+    "withProductionFlags": "no sentinel file was written",
+    "withoutIgnoreScripts": "prepare, prepack and postpack each wrote their sentinel"
+  },
+  "files": { "npm-pack-2c78305d.json": "the parent's inventory", "npm-pack-d3ae220f.json": "the marked child's inventory" }
+}

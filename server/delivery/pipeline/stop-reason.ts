@@ -5,6 +5,7 @@ import { CommandFailure } from '../../workers/process';
 import { incompleteReadOutput, temporaryReadFailure } from '../../scheduling/temporary-read';
 import { APPROACH_GUARD_REJECTION } from './approach';
 import { SourceClosed } from './source-closed';
+import { ReleaseMarkerRefusal } from '../publication/release-marker-stop';
 
 /** The wording of a write whose outcome is unknown, including what `harnessEffect` says after a failed read-back. */
 const UNCERTAIN_WRITE = /uncertain|external effects require reconciliation|needs read-back|cannot be resent|unverified after read-back/i;
@@ -17,6 +18,8 @@ const UNCERTAIN_WRITE = /uncertain|external effects require reconciliation|needs
  */
 export function classifyStop(error: unknown, paused = false): StopKind {
     const text = String(error);
+    // A release-marker refusal is typed evidence for a person; no wording below may relabel it.
+    if (error instanceof ReleaseMarkerRefusal) return 'release-marker';
     if (error instanceof CurrentChecksWait) return 'provider-checks';
     if (error instanceof SourceClosed) return 'source-closed';
     if (error instanceof EffectUncertainError) return 'uncertain-effect';
@@ -38,5 +41,6 @@ export function classifyStop(error: unknown, paused = false): StopKind {
 
 /** The saved form of a stop: its kind and when the harness recorded it. */
 export function stopReason(error: unknown, paused: boolean, now: Date): StopReason {
-    return { kind: classifyStop(error, paused), at: now.toISOString() };
+    const kind = classifyStop(error, paused);
+    return error instanceof ReleaseMarkerRefusal ? { kind, at: now.toISOString(), releaseMarker: structuredClone(error.evidence) } : { kind, at: now.toISOString() };
 }

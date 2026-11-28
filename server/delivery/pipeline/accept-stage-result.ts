@@ -40,8 +40,17 @@ import { metadataAppliesToHead } from '../publication/metadata-context';
 import { acceptMetadataReview } from '../publication/metadata-review';
 import type { GitHubDelivery } from './github-delivery';
 import { deliveryNextStage, hasUncertainEffects, pendingPreparationCheck, closeoutReceipt } from './github-delivery';
+import { returnMarkedCandidate, type WriterCheckout } from '../publication/return-marked-candidate';
+import { checkContinuationAdoption, checkWriterAdoption, revalidateWriterAdoption } from '../publication/marker-adoption';
+import { acceptCorrection } from '../publication/accept-correction';
+import { assertMappedCheckout, type CorrectionAcceptance } from '../publication/marker-correction-task';
+import { unresolvedWorkerFailure } from './unresolved-worker';
 
-export interface StageContext { officeQA?: boolean; job: TicketJob; result: StageResult; project: Store['project']; root: string; issue: any; role: Role; continuation: Awaited<ReturnType<GitHubDelivery['continuationGuard']>> | undefined; reviewStart: any; inputSha256: string; beforeWorkers: Set<string>; candidateAtStart: string; technicalPhase: boolean }
+export interface StageContext { officeQA?: boolean; job: TicketJob; result: StageResult; project: Store['project']; root: string; issue: any; role: Role; continuation: Awaited<ReturnType<GitHubDelivery['continuationGuard']>> | undefined; reviewStart: any; inputSha256: string; beforeWorkers: Set<string>; candidateAtStart: string; technicalPhase: boolean;
+    /** The checkout an ordinary opted-in implement writer started from (`publication/return-marked-candidate.ts`). */
+    writerCheckout?: WriterCheckout;
+    /** Set for the implement result the harness derived from a verified release-marker correction. */
+    markerCorrection?: CorrectionAcceptance }
 /** Validates and applies one stage result: identity fences, proofs, parking, repairs, gates and the next stage. */
 export async function acceptStageResult(this: GitHubDelivery, context: StageContext): Promise<void> {
     const { job, result, project, root, issue, role, continuation, reviewStart, inputSha256, beforeWorkers, candidateAtStart, technicalPhase } = context;
@@ -51,6 +60,8 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         job.steps.push({ stage: 'superseded-stage-result', result });
         throw new Error('Delivery ownership, candidate, hold or pause state changed during this stage; result retained for reconciliation');
     }
+    // A [skip release] package change is returned to its developer before any success write (#617).
+    if (await returnMarkedCandidate(this, context)) return;
     acceptFeatureReview(this.store, job, result, job.stage, beforeWorkers);
     let nativeProof: { workerId?: string; nativeResultSha256?: string } = {};
     nativeProof = { ...nativeProof, ...stoppedBaseStageProof(this.store, job, result, beforeWorkers) };
@@ -90,8 +101,9 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         const gap = officeQAEvidenceGap(withoutReviewAdvisories(this.store, job, result), { key: job.key, head: job.head, stage: 'github-validate', approach: job.approach }, root);
         if (gap) { job.steps.push({ ...nativeProof, stage: job.stage, result }); job.qaGateRefusal = { step: job.steps.length - 1, inputSha256, at: this.store.clock.now().toISOString() }; throw new Error(gap); }
     }
-    if (result.approach) {
-        const failedWorker = (this.store.state.workLog || []).filter(w => w.requestId === job.id).some(w => ['failed', 'interrupted', 'blocked'].includes(w.status) && !(this.store.state.workLog || []).some(later => later.requestId === job.id && later.stage === w.stage && later.startedAt > w.startedAt && later.status === 'completed'));
+    // A correction's retained approach is applied in its acceptance transaction.
+    if (result.approach && !context.markerCorrection) {
+        const failedWorker = unresolvedWorkerFailure(this.store.state.workLog, job);
         try {
             if (job.implementationContinuation && (result.approach.review !== 'full' || result.approach.validation === 'developer-checks')) throw new Error('Continuation requires retained full independent review and QA');
             if (job.scopeRepairResumes?.length && (result.approach.review !== 'full' || result.approach.validation === 'developer-checks')) throw new Error('Resumed scope repair requires full independent review and QA');
@@ -144,7 +156,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
     }
     if (job.stage === 'review' && !result.approach && job.approach)
         result.approach = job.approach;
-    job.steps.push({ ...nativeProof, stage: job.stage, result });
+    if (!context.markerCorrection) job.steps.push({ ...nativeProof, stage: job.stage, result });
     if (job.skippedStages)
         delete job.skippedStages[job.stage];
     if (job.stage === 'lead-pr' && reviewStart && result.commit === reviewStart.head.sha)
@@ -195,6 +207,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
             if (files.some(file => !isDeepStrictEqual(artifact(this.store, file.path), file))) throw new Error('Continuation check/review evidence changed');
         };
         if (decision) {
+            await checkContinuationAdoption(this, job, result);
             this.store.transaction(() => {
                 assertFinal();
                 job.implementationContinuation = decision.next;
@@ -334,6 +347,8 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
                 throw new Error('Current main identity is unavailable');
             await this.execute('git', ['merge-base', '--is-ancestor', base.sha, result.commit], { cwd: result.worktree, timeout: 10000 });
         }
+        if (context.markerCorrection) { await assertMappedCheckout(this.execute, job, result, context.markerCorrection); acceptCorrection(this.store, job, result, role, context.markerCorrection, deliveryNextStage, learn); return; }
+        if (await checkWriterAdoption(this, context)) await revalidateWriterAdoption(this, context);
         job.head = result.commit;
         job.worktree = result.worktree;
         job.branch = result.branch;

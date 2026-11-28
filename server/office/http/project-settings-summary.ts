@@ -10,8 +10,8 @@ import type { ProjectBindings } from '../project-bindings-config';
  * cloud, subscription or repository ids, local paths or authority text.
  */
 export function projectSettingsSummary(project: Pick<OfficeProject, 'id' | 'provider' | 'autoAdopt' | 'githubProject'>, bindings: ReadonlyMap<string, ProjectBindings>, policies: ReadonlyMap<string, ProjectPolicyInput>): Partial<OfficeConfigProjectSettings> {
-    const { merge, handsOff, checkpoint } = resolveProjectPolicy(project, policies.get(project.id));
-    const policy = { merge, handsOff, checkpoint: { hour: checkpoint.hour, weekends: checkpoint.weekends } };
+    const { merge, handsOff, releaseMarkerCheck, checkpoint } = resolveProjectPolicy(project, policies.get(project.id));
+    const policy = { merge, handsOff, releaseMarkerCheck, checkpoint: { hour: checkpoint.hour, weekends: checkpoint.weekends } };
     if (project.provider === 'github') return { policy, autoAdopt: effectiveAutoAdopt(project, handsOff) };
     const bound = project.provider === 'azure' ? bindings.get(project.id) : undefined;
     if (!bound) return { policy };

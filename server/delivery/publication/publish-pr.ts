@@ -16,6 +16,7 @@ import type { command } from '../../workers/process';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 import { assertPushCredential } from '../../github/identity/push-credentials';
+import { admitMarkedPush, publicationRefs, pullRequestObservation, type MarkerObservation } from './marker-publication';
 
 type Execute = typeof command;
 export interface Publication { pr: number; url: string; pushed: boolean; created: boolean; contentSource?: string }
@@ -43,12 +44,14 @@ function pushUnread(store: Store, job: TicketJob, head: string): boolean {
 /** Repository pre-push hooks run full verification (Brain runs lint, format, architecture and its test suite). */
 const PUSH_TIMEOUT_MS = 15 * 60 * 1000;
 
-async function pushOnce(store: Store, execute: Execute, jobs: TicketJob[], job: TicketJob, candidate: Candidate): Promise<void> {
+async function pushOnce(store: Store, execute: Execute, jobs: TicketJob[], job: TicketJob, candidate: Candidate, observation?: MarkerObservation): Promise<void> {
     const { head, branch } = candidate;
     const atHead = async () => await remoteHead(execute, candidate) === head ? { head } : null;
+    // An opted-in project refuses a [skip release] package change before any new push intent (#617).
+    const marked = await admitMarkedPush(store, execute, job, candidate, observation, () => assertCandidate(store, jobs, job, candidate));
     await harnessEffect(store, job, {
         key: `push:${head}`, operation: 'git-push', target: `${store.project.repository}:${branch}`, payload: { head, branch },
-        guard: () => assertCandidate(store, jobs, job, candidate),
+        guard: marked ? async () => { assertCandidate(store, jobs, job, candidate); await marked(); } : () => assertCandidate(store, jobs, job, candidate),
         // An App push proves its destination, helper and hooks before the claim, so a refusal is never sent.
         credentialCheck: () => assertPushCredential(store, execute, candidate.worktree),
         dispatch: async () => {
@@ -87,7 +90,7 @@ export async function publishCandidate(store: Store, execute: Execute, jobs: Tic
         let pushed = false;
         if (p.head.sha !== head) {
             await execute('git', ['merge-base', '--is-ancestor', p.head.sha, head], { cwd: worktree, timeout: 30000, readOnly: true });
-            await pushOnce(store, execute, jobs, job, candidate);
+            await pushOnce(store, execute, jobs, job, candidate, pullRequestObservation(store, p, candidate));
             pushed = true;
         }
         // A push whose response was lost is settled by reading the branch under its own intent; nothing is pushed again.
@@ -104,11 +107,13 @@ export async function publishCandidate(store: Store, execute: Execute, jobs: Tic
     if (prior.length && adoptable.length !== 1)
         throw new Error(`Branch ${branch} already has a different PR; reconcile before publication`);
     if (adoptable.length === 1 && activeRetry(job)?.mode === 'draft') await assertExistingPublication(store, execute, job, root, adoptable[0].number, branch);
-    const remote = await remoteHead(execute, candidate);
+    // Where the release-marker check applies, the same probe also reads the target, each ref by its full name.
+    const refs = await publicationRefs(store, execute, candidate);
+    const remote = refs ? refs.tips.published : await remoteHead(execute, candidate);
     if (remote && remote !== head)
         throw new Error(`Remote ${branch} is at ${remote.slice(0, 7)}, not the reviewed candidate; reconcile before publication`);
     if (!remote || pushUnread(store, job, head))
-        await pushOnce(store, execute, jobs, job, candidate);
+        await pushOnce(store, execute, jobs, job, candidate, refs);
     if (adoptable.length === 1)
         return { pr: adoptable[0].number, url: adoptable[0].url, pushed: !remote, created: false };
     const content = await prContent(execute, job, issueNumber, root);

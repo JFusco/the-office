@@ -18,6 +18,7 @@ test('a valid policy block is returned as written, and every key is optional', (
     expect(parseProjectPolicy(web, {})).toEqual({});
     expect(parseProjectPolicy(web, { merge: 'human', handsOff: true, checkpoint: { hour: 8, weekends: false } })).toEqual({ merge: 'human', handsOff: true, checkpoint: { hour: 8, weekends: false } });
     expect(parseProjectPolicy(cec, { merge: 'human', handsOff: false, checkpoint: {} })).toEqual({ merge: 'human', handsOff: false, checkpoint: {} });
+    expect(parseProjectPolicy(web, { releaseMarkerCheck: false })).toEqual({ releaseMarkerCheck: false });
 });
 
 test.each([
@@ -26,6 +27,8 @@ test.each([
     [web, { merge: 'auto' }, 'Project "web": policy.merge must be "human" or "harness"'],
     [web, { merge: null }, 'Project "web": policy.merge must be "human" or "harness"'],
     [web, { handsOff: 'yes' }, 'Project "web": policy.handsOff must be a boolean'],
+    [web, { releaseMarkerCheck: 'yes' }, 'Project "web": policy.releaseMarkerCheck must be a boolean'],
+    [web, { releaseMarkerCheck: null }, 'Project "web": policy.releaseMarkerCheck must be a boolean'],
     [web, { checkpoint: 9 }, 'Project "web": policy.checkpoint must be an object'],
     [web, { checkpoint: { hour: 24 } }, 'Project "web": policy.checkpoint.hour must be an integer from 0 to 23'],
     [web, { checkpoint: { hour: -1 } }, 'Project "web": policy.checkpoint.hour must be an integer from 0 to 23'],

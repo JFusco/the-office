@@ -19,7 +19,7 @@ export const RELEASE_FLOOR = '252f1406bf597113394d97e69abc54643532b971';
  * graft file, which give a commit other parents under the same name, and no fetch of an object the repository
  * lacks, which a partial clone would otherwise make by itself.
  */
-const AS_COMMITTED = { GIT_NO_REPLACE_OBJECTS: '1', GIT_GRAFT_FILE: '/dev/null', GIT_NO_LAZY_FETCH: '1', GIT_ALLOW_PROTOCOL: '' };
+export const AS_COMMITTED = { GIT_NO_REPLACE_OBJECTS: '1', GIT_GRAFT_FILE: '/dev/null', GIT_NO_LAZY_FETCH: '1', GIT_ALLOW_PROTOCOL: '' };
 
 export type FloorReading = { holds: true } | { holds: false; reason: string };
 

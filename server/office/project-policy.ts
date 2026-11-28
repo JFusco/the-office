@@ -8,6 +8,8 @@ export interface ProjectPolicy {
     merge: 'human' | 'harness';
     /** The harness, not a model, performs candidate creation, publication, promotion and closeout. */
     handsOff: boolean;
+    /** A hands-off push refuses a `[skip release]` commit that changes the npm package. Opt-in per project. */
+    releaseMarkerCheck: boolean;
     /** Daily checkpoint, in America/New_York. */
     checkpoint: { hour: number; weekends: boolean };
     /** Human holds for this project only, by ticket key. The top-level `holds` still applies to every project. */
@@ -22,7 +24,8 @@ type Project = Pick<OfficeProject, 'id' | 'provider'>;
  */
 const BEFORE_POLICY = new Map<string, ProjectPolicyInput>([
     ['cec', { checkpoint: { hour: 9, weekends: false } }],
-    ['cms-field-vocabulary', { handsOff: true, checkpoint: { hour: 15 } }],
+    // CMS release analysis drops a `[skip release]` commit, so a marked package change would never ship (#617).
+    ['cms-field-vocabulary', { handsOff: true, releaseMarkerCheck: true, checkpoint: { hour: 15 } }],
     ['brain', { handsOff: true, checkpoint: { hour: 17 } }],
 ]);
 
@@ -31,6 +34,7 @@ export function resolveProjectPolicy(project: Project, input: ProjectPolicyInput
     return Object.freeze({
         merge: input.merge ?? (project.provider === 'github' ? 'harness' : 'human'),
         handsOff: input.handsOff ?? before.handsOff ?? false,
+        releaseMarkerCheck: input.releaseMarkerCheck ?? before.releaseMarkerCheck ?? false,
         checkpoint: Object.freeze({
             hour: input.checkpoint?.hour ?? before.checkpoint?.hour ?? 17,
             weekends: input.checkpoint?.weekends ?? before.checkpoint?.weekends ?? true,

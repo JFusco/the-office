@@ -449,6 +449,119 @@ draft is sent back to that stage on its next observation, once per head. A run s
 left alone, because it re-reads its draft on every step. The readiness review and merge
 authorization are unchanged (`server/delivery/publication/maintenance-verified-draft.ts`).
 
+### Release-marker check
+
+CMS release analysis drops every commit whose message contains `[skip release]`, so a marked commit
+that changes what the npm package ships is never released (#617). A hands-off GitHub project that opts
+in with `policy.releaseMarkerCheck` refuses to publish one. The opt-in defaults on for
+`cms-field-vocabulary` only, an explicit `false` turns it off, and every other project is off;
+accessibility-standards has the same release wiring and needs its own opt-in decision. Settings shows
+the effective value. The modules are in `server/delivery/publication/`.
+
+**Where it runs.** Both ordinary push routes in `pushOnce` run the check before a fresh `git-push`
+Effect or a saved `prepared` one: the initial create and the descendant push to an existing PR. On
+create, the existing remote probe reads the candidate and target refs in one `ls-remote`, each parsed
+by its full name. On a descendant push, the existing PR read supplies the target and published SHAs,
+and both of its repositories must be this one. A push already sent is only read back under its
+original writer, and a verified receipt is honoured; neither is classified again.
+
+**The fast exit.** Before any extra provider request, a local walk reads every commit the push could
+introduce: all parents, the full message, original objects only (no replacement refs, grafts or lazy
+fetch). The walk excludes only what is already established: the published tip, and the recorded
+candidate base once it is proven reachable from the observed target. With no recorded base the walk
+widens. It then narrows locally with the observed target and published tip, so a marker that a
+merge from the target brought in is not introduced. An unmarked push runs no `npm pack` and makes no
+extra provider call. If the walk cannot decide (the target object is missing locally, the target
+branch is absent, or a shallow history cuts the walk short), the push stops as incomplete coverage
+before anything is packed or fetched.
+
+**Classifying a marked commit.** For an introduced marker the check binds both live refs (create
+reuses its probe), which must agree with what was observed. It reads the release wiring as data at
+the verified target, never the candidate: `.releaserc.cjs` must select the local analyzer, which must
+apply the filter it imports from `./release-commits.cjs` to `context.commits`, and the filter must drop
+the literal marker from the full message. Any other wiring, including a marker mentioned only in a
+README, is indeterminate. Each marked commit is compared with its first parent on its own, so a later
+revert never clears it. Each needed revision is exported through its own Git index into
+`ticket-work/<job>/release-marker/`, verified against its tree (`export-ignore` files included), and
+packed once with the Office's own npm (11.9.0, beside the service's Node):
+`npm pack --dry-run --json --ignore-scripts --offline`, with a private cache and config and no
+workspaces. The scratch folder is removed on every exit. Lifecycle scripts never run and nothing is
+installed. A wrong npm version, a malformed inventory, workspace members or bundled dependencies are
+indeterminate; CMS's settings-only `pnpm-workspace.yaml` is accepted.
+
+A commit changes the package if it adds or removes an inventory path, or if it changes a path that
+ships on either side, the manifest, a file npm always ships, an ignore file, or a build input. After
+those checks a path is allowed only if both inventories exclude it and it lies under a reviewed
+prefix. This is the Office's reviewed assumption about CMS (`release-marker-paths.ts`): `wiki/` and
+`scripts/wiki/` (graph data included) feed no CMS producer, while `src/`, `sources/profiles/` and
+`scripts/build-catalog.mjs` feed the build. Any other path is indeterminate. If a CMS producer starts
+consuming a listed prefix, the list needs an Office policy review first.
+
+**Stops.** A refusal is a typed `release-marker` stop with its evidence: whether the change is proven
+or indeterminate, the commits, changed paths, inventory paths, and the coverage or tool diagnostic.
+Every owner writes it `blocked`, a request that owns the work records it too, and it counts as
+`needs-decision`. A draft retry never takes one. A refusal before admission creates no push intent.
+An admitted marked push repeats its check of the live refs, the checkout and the job's authority before
+the intent exists and again in preflight. Movement found first in preflight leaves one rejected,
+undispatched intent.
+
+**A stale PR base is a possible false stop.** On a descendant push the observed target is the PR's
+`base.sha`, and the live target must equal it exactly. GitHub's `base.sha` is not the live target:
+CMS PR 181 opened at 22:38:09Z on base `8426cf93`, `main` moved to `7b067ed` at 22:38:32Z, and the PR
+still showed base `8426cf93` when it merged at 22:49:13Z (merge `f0253a9`'s first parent is `7b067ed`).
+So a descendant push that introduces a marker stops as indeterminate ("the remote refs moved")
+whenever `main` moved since the PR last synced, even with both objects local. That includes an
+update-base merge that brings in `main`'s wiki-sync or Renovate `[skip release]` commits. This is
+accepted fail-closed behavior. It is distinct from the stale-target case above, where the observed
+target object is missing locally.
+
+**Returning a writer's result.** When an ordinary, unpublished implement result introduces a proven
+package change in the writer's own clean, linear, unsigned suffix of 1 to 100 commits, the developer
+gets it back. The prior accepted head, approach and gates are kept, the original result is kept as a
+`release-marker-return` step, and `implement` is queued. A job gets at most two returns, across
+reloads (`TicketJob.releaseMarkerReturns`). A replay of the same work spends nothing, and a third proven
+refusal blocks with the commit and paths. A marked package change in a foreign prefix, a published
+suffix, signed or incompatible history, movement, or incomplete proof is a typed stop with no return.
+
+**The messages-only correction.** The returned job runs a read-only developer at `github-implement`,
+on its delivery claim, with a messages-only schema: replacement messages for the refused SHAs.
+The harness owns every Git command. It checks the claim, the refused checkout and its publication,
+the human inputs and the proposal (at least one message, each SHA refused, unique, non-blank,
+no NUL). A nonpassing result, an uncertain receipt or requested prerequisites stop here. It proves the
+original objects byte for byte from the saved boundary. Unchanged messages write nothing and are
+classified again as they are. Changed ones go through the existing `rewordCommits`, and its objects
+are verified independently: trees, parents, every other header byte, the approved messages, and the
+untouched ones. The result is classified from the original boundary and the full mapping is saved and
+bound to the return. The guards are checked again after the last checkout read, and the branch
+moves once by `update-ref <branch> <new> <refused>`. A lost compare-and-swap keeps the mapping and reports the
+competing tip, with no second write. A tip still carrying a package change spends the next return on
+its mapped SHAs. An allowed tip gets a harness `checks` artifact for the new SHA: history-sensitive
+scripts (range `lint:commit`, `release:preflight`) run fresh, and content checks carry forward on equal
+trees. Only checks whose result follows from equal trees carry forward. If the retained approach
+requires a check that depends on commit history and the harness cannot run it fresh (CMS's
+`release:dry`, named directly or reached through another script), the correction stops typed rather
+than credit the refused SHA's result. The tip is then accepted through the ordinary implement gates,
+the job-wide unresolved-worker guard included, once the checkout is read on the refused branch at the
+mapped SHA. Review, QA and publication run on the adopted SHA with their own fresh evidence.
+
+**Interruption.** A correction interrupted after dispatch, in the step or by a service exit, is blocked
+with an interrupted-correction stop. The pending record, prior head, return count and checkout are
+kept. After startup, before dispatch, a read-only look at the checkout records which tip is checked
+out, or that it could not be read. Nothing is redispatched, salvaged, reset or pushed, and a writer
+restart skips the job. A return whose correction has not started still gets its first dispatch.
+
+**Other adoption paths.** `update-base`, scope repair, a continuation, a saved-prerequisite handoff and
+implementation recovery run the same check, stop-only, before they adopt a head. They spend no return.
+A saved-prerequisite handoff also declines a job with a pending correction. Heads accepted earlier
+still go through `pushOnce` when they are published.
+
+**Not covered.** The CI commit-message repair pushes with force-with-lease
+(`server/delivery/repairs/ci-publication.ts:78`) and does not run this check, so a rewording there
+could add the marker to a commit that changes shipped files. Dependency-bot pushes are outside it
+too, and so are the existing operator actions and holds on CMS PRs 192 and 196. Rolling back to a
+release without the check makes a job with a pending return an ordinary queued implement job; hold
+such jobs before a rollback.
+
 ## Recovery and human involvement — shared across roles
 
 | Observation | Next action | Boundary |
@@ -464,7 +577,7 @@ authorization are unchanged (`server/delivery/publication/maintenance-verified-d
 
 When a delivery stage, ticket stage or harness request stops on an error, the harness records
 why on the record (`stop.kind`: provider checks, PR not ready, closed source, uncertain effect, transient read,
-pause, hold, authority or unclassified). The label is for counting stops (`pnpm office baseline`);
+pause, hold, authority, release marker or unclassified). The label is for counting stops (`pnpm office baseline`);
 it changes no status and grants no retry, resume or authority.
 
 A handoff of an existing pull request that was merged, with its issue closed as completed, outside the
@@ -852,7 +965,8 @@ investigation resolves from the accepted result.
 A stopped-base recovery is settled once its delivery has finished or been cancelled.
 
 Stopped work is counted by the cause the harness itself recorded. It is counted as needing a
-decision only when its park reached a person, it is under a hold or it lacks authority. A park
+decision only when its park reached a person, it is under a hold, it lacks authority or it is a
+release-marker refusal (a published park still decides first). A park
 waiting on a release is a prerequisite, a write of unknown outcome is unconfirmed, and a status that
 names its own cause (failed, interrupted) keeps it. Work with no recorded cause is shown as exactly
 that, never assumed to be a decision (`server/scheduling/stop-cause.ts`). Work whose exact stop a

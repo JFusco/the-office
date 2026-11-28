@@ -1,0 +1,135 @@
+{
+  "name": "cms-field-vocabulary",
+  "version": "1.6.1",
+  "description": "Official-source-backed CMS field vocabularies and deterministic coding-agent contracts",
+  "type": "module",
+  "private": false,
+  "license": "MIT",
+  "author": "Joe Fusco",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JFusco/cms-field-vocabulary.git"
+  },
+  "homepage": "https://github.com/JFusco/cms-field-vocabulary#readme",
+  "bugs": {
+    "url": "https://github.com/JFusco/cms-field-vocabulary/issues"
+  },
+  "packageManager": "pnpm@11.28.12",
+  "engines": {
+    "node": ">=24.14.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "bin": {
+    "cms-field-vocabulary": "bin/cms-field-vocabulary.mjs"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./catalog": "./catalog/catalog.json",
+    "./catalog/profiles/*": "./catalog/profiles/*.json",
+    "./definitions": {
+      "types": "./dist/definitions.d.ts",
+      "import": "./dist/definitions.js",
+      "require": "./dist/definitions.cjs"
+    },
+    "./definitions.json": "./definitions/rendering-operations.json",
+    "./schema/*": "./schemas/*.schema.json",
+    "./profiles/*": "./profiles/consumers/*.json",
+    "./profiles/agent/*": "./profiles/agent/*.json",
+    "./profiles/consumer/*": "./profiles/consumers/*.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin/",
+    "catalog/catalog.json",
+    "catalog/profiles/",
+    "definitions/",
+    "dist/",
+    "docs/platforms/",
+    "profiles/",
+    "schemas/",
+    "sources/evidence-locators.json",
+    "sources/official-sources.json",
+    "sources.lock.json",
+    "CHANGELOG.md",
+    "LICENSE",
+    "OPERATING.md",
+    "README.md",
+    "SECURITY.md"
+  ],
+  "keywords": [
+    "cms",
+    "contentful",
+    "contentstack",
+    "optimizely",
+    "sitecore",
+    "wordpress",
+    "content-modeling",
+    "ai-agents"
+  ],
+  "scripts": {
+    "prepare": "husky",
+    "clean": "node scripts/clean.mjs",
+    "catalog:build": "node scripts/build-catalog.mjs",
+    "catalog:check": "node scripts/build-catalog.mjs --check",
+    "types:build": "tsup src/index.ts src/definitions.ts --format esm,cjs --dts --clean --out-dir dist",
+    "build": "pnpm run catalog:build && pnpm run types:build",
+    "validate": "node scripts/validate.mjs",
+    "context:check": "node scripts/check-context-budget.mjs",
+    "context:update": "node scripts/check-context-budget.mjs --update",
+    "test": "node --test tests/*.test.mjs",
+    "test:packed": "node scripts/verify-packed-consumer.mjs",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix --max-warnings=0",
+    "format": "pnpm run lint:fix",
+    "format:check": "pnpm run lint",
+    "lint:staged": "lint-staged",
+    "lint:commit": "commitlint --config commitlint.config.cjs",
+    "lint:pr": "node scripts/validate_pr_body.cjs",
+    "release:dry": "semantic-release --dry-run",
+    "release:preflight": "node scripts/check-release-commit.cjs",
+    "release:preflight:selftest": "node scripts/check-release-commit.selftest.cjs",
+    "sources:scan:index": "node scripts/source-scan.mjs --mode index",
+    "sources:scan:full": "node scripts/source-scan.mjs --mode full",
+    "sources:review": "node scripts/source-review.mjs",
+    "wiki:check": "node scripts/wiki/check.cjs",
+    "graph:build": "node scripts/wiki/build-graph.cjs",
+    "graph:check": "node scripts/wiki/build-graph.cjs --check",
+    "verify:push": "pnpm run validate && pnpm run catalog:check && pnpm run types:build && pnpm run test && pnpm run context:check && pnpm run wiki:check",
+    "verify:ci": "pnpm run lint && pnpm run release:preflight && pnpm run verify:push",
+    "prepack": "pnpm run validate && pnpm run catalog:check && pnpm run types:build"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.4",
+    "@commitlint/config-conventional": "21.2.4",
+    "@eslint/js": "10.0.1",
+    "@semantic-release/changelog": "6.0.3",
+    "@semantic-release/commit-analyzer": "13.0.1",
+    "@semantic-release/git": "10.0.1",
+    "@semantic-release/github": "12.0.11",
+    "@semantic-release/npm": "13.2.0",
+    "@types/node": "26.6.6",
+    "ajv": "8.20.0",
+    "conventional-changelog-conventionalcommits": "10.4.1",
+    "eslint": "10.15.0",
+    "globals": "17.14.0",
+    "husky": "9.1.7",
+    "lint-staged": "17.6.1",
+    "semantic-release": "25.0.9",
+    "tsup": "9.0.0",
+    "typescript": "5.9.3"
+  },
+  "lint-staged": {
+    "*.{js,cjs,mjs,ts}": "eslint --fix --max-warnings=0 --no-warn-ignored",
+    "*.json": "node scripts/validate-staged-json.mjs"
+  }
+}

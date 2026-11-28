@@ -48,6 +48,8 @@ export function draftRetryAdmission(store: Store, job: TicketJob, unsettled: Uns
     const admit = (admission: Exclude<DraftAdmission, { refused: string }>): DraftAdmission =>
         unsettledFor(store, job, typeof unsettled === 'function' ? unsettled() : unsettled) ? { refused: 'A write of this job is unsettled in the Effects ledger' } : admission;
     if (job.stage !== 'draft') return { refused: 'Not a draft' };
+    // A release-marker refusal waits on a person; filenames in its detail never make it look transient.
+    if (job.stop?.kind === 'release-marker') return { refused: 'A release-marker refusal needs a decision' };
     if (!harnessDelivers(store, job)) return { refused: 'This draft keeps its dedicated recovery route' };
     if (!/^[a-f0-9]{40}$/.test(job.head) || !job.branch || !job.worktree) return { refused: 'No identified candidate to publish' };
     if (job.parked) return { refused: 'The job is parked for a decision' };
