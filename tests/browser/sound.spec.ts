@@ -1,8 +1,30 @@
-import { expect, test } from './fixture-test';
+import { expect, test, type Page } from './fixture-test';
 import { setPreferences } from './support';
+
+async function observeAudioReadiness(page: Page) {
+    await page.addInitScript(() => {
+        const decode = AudioContext.prototype.decodeAudioData;
+        AudioContext.prototype.decodeAudioData = async function (...args) {
+            this.addEventListener('statechange', () => {
+                document.documentElement.dataset.audioState = this.state;
+            }, { once: true });
+            const buffer = await decode.apply(this, args);
+            const data = document.documentElement.dataset;
+            data.audioDecoded = String(Number(data.audioDecoded || 0) + 1);
+            data.audioState = this.state;
+            return buffer;
+        };
+    });
+}
+
+async function expectAudioReady(page: Page) {
+    await expect(page.locator('html')).toHaveAttribute('data-audio-decoded', '4');
+    await expect(page.locator('html')).toHaveAttribute('data-audio-state', 'running');
+}
 
 test('warm sounds play on interaction while a save is stalled, and previews follow volume', async ({ page, request }) => {
     await setPreferences(request, { quality: 'low', floorSound: true });
+    await observeAudioReadiness(page);
     // Observe real Web Audio dispatch without replacing playback or loading.
     await page.addInitScript(() => {
         const original = AudioBufferSourceNode.prototype.start;
@@ -16,6 +38,7 @@ test('warm sounds play on interaction while a save is stalled, and previews foll
     await page.goto('/');
     await page.getByRole('button', { name: 'Office settings' }).click();
     await page.getByRole('button', { name: 'Sound', exact: true }).click();
+    await expectAudioReady(page);
     const volume = page.getByRole('slider', { name: 'Sound effects volume' });
     await expect(volume).toHaveValue('25');
     const count = async () => Number(await page.locator('html').getAttribute('data-sound-starts'));
@@ -35,11 +58,12 @@ test('warm sounds play on interaction while a save is stalled, and previews foll
     await page.getByRole('button', { name: 'Play off' }).click(); expect(await count()).toBe(2);
     await volume.press('End');
     await expect.poll(async () => (await (await request.get('/api/preferences')).json()).soundVolume).toBe(100);
-    await page.getByLabel('Hover', { exact: true }).check();
+    await page.getByLabel('Panel navigation hover', { exact: true }).check();
     await page.keyboard.press('Escape');
     const floor = page.getByRole('button', { name: /^Go to Floor 2/ });
-    await floor.hover(); const before = await count();
-    expect(before).toBeGreaterThan(2);
+    const before = await count();
+    await floor.hover();
+    expect(await count()).toBe(before);
     await floor.click();
     await expect(page.getByRole('heading', { name: 'CTO Office', exact: true })).toBeVisible();
     expect(await count()).toBe(before + 1);
@@ -72,34 +96,48 @@ test('saves a slider drag once, syncs another browser, and restores a rejected e
     } finally { await second.close(); }
 });
 
-test('plays one doors recording per animated arrival and dispatches nested hover in the pointer event', async ({ page, request }) => {
+test('plays hover only on panel navigation rows and one doors recording per animated arrival', async ({ page, request }) => {
     await setPreferences(request, { quality: 'low', floorSound: true, hoverSound: true });
     await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await observeAudioReadiness(page);
     await page.addInitScript(() => {
-        let pointerStart = 0;
-        document.addEventListener('pointerover', () => { pointerStart = performance.now(); }, true);
-        document.addEventListener('pointerover', () => { pointerStart = 0; });
+        let inPointerEvent = false;
+        document.addEventListener('pointerover', () => { inPointerEvent = true; }, true);
+        document.addEventListener('pointerover', () => { inPointerEvent = false; });
         const start = AudioBufferSourceNode.prototype.start;
         AudioBufferSourceNode.prototype.start = function (...args) {
             const data = document.documentElement.dataset;
             if (this.buffer && this.buffer.duration > .9) data.doors = String(Number(data.doors || 0) + 1);
-            if (pointerStart && this.buffer && this.buffer.duration < .1) {
+            if (inPointerEvent && this.buffer && this.buffer.duration < .1) {
                 data.hoverEvents = String(Number(data.hoverEvents || 0) + 1);
-                data.hoverDispatchMs = String(performance.now() - pointerStart);
             }
             return start.apply(this, args);
         };
     });
     await page.goto('/');
     const gear = page.getByRole('button', { name: 'Office settings' });
-    await gear.click(); await page.keyboard.press('Escape');
-    await page.mouse.move(5, 5);
+    await gear.click();
+    await expectAudioReady(page);
+    const html = page.locator('html');
+    expect(await html.getAttribute('data-hover-events')).toBeNull();
+
+    const sound = page.getByRole('button', { name: 'Sound', exact: true });
+    const preferences = page.getByRole('button', { name: 'Office preferences', exact: true });
+    await sound.hover();
+    await expect(html).toHaveAttribute('data-hover-events', '1');
+    await sound.locator('svg').dispatchEvent('pointerover', { pointerType: 'mouse', relatedTarget: await sound.elementHandle() });
+    await preferences.dispatchEvent('pointerover', { pointerType: 'touch' });
+    await preferences.dispatchEvent('pointerover', { pointerType: 'mouse', buttons: 1 });
+    await expect(html).toHaveAttribute('data-hover-events', '1');
+
+    await preferences.hover();
+    await expect(html).toHaveAttribute('data-hover-events', '2');
+    await preferences.click();
+    await page.getByLabel('Graphics').hover();
+    await expect(html).toHaveAttribute('data-hover-events', '2');
+    await page.keyboard.press('Escape');
     await gear.hover();
-    const metrics = await page.locator('html').evaluate(el => ({ count: el.dataset.hoverEvents, ms: el.dataset.hoverDispatchMs }));
-    expect(Number(metrics.count)).toBeGreaterThan(0);
-    console.log('Hover event to Web Audio start (ms)', metrics.ms);
-    await gear.locator('svg').dispatchEvent('pointerover', { pointerType: 'mouse', relatedTarget: await gear.elementHandle() });
-    await expect(page.locator('html')).toHaveAttribute('data-hover-events', metrics.count!);
+    await expect(html).toHaveAttribute('data-hover-events', '2');
     for (const [destination, count] of [[2, 1], [1, 2]] as const) {
         await page.getByRole('button', { name: new RegExp('^Go to Floor ' + destination) }).click();
         await expect(page.locator('html')).toHaveAttribute('data-doors', String(count));

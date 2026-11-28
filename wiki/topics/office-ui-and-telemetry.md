@@ -46,4 +46,4 @@ and the observation time when the stream disconnects.
 - [Office settings](https://github.com/JFusco/the-office/pull/52), [people directory](https://github.com/JFusco/the-office/pull/64), and [live ticket timelines](https://github.com/JFusco/the-office/pull/550)
 - [Cost capture](https://github.com/JFusco/the-office/pull/81), [board publication](https://github.com/JFusco/the-office/pull/83), and [Telemetry drawer](https://github.com/JFusco/the-office/pull/84)
 
-[Office sounds](../journal/2026-11-27-office-sound.md) are optional global preferences. Each browser plays its own local interactions with cached recordings.
+[Office sounds](../journal/2026-11-27-office-sound.md) are optional global preferences. Each browser plays its own local interactions with cached recordings. The hover click plays on panel navigation rows.

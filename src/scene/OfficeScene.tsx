@@ -1,4 +1,3 @@
-import { sceneHover } from '../office/sound/interactions';
 import { RoomCamera } from './RoomCamera';
 import type { CameraBookmark } from './camera-bookmark';
 import type { RefObject } from 'react';
@@ -58,7 +57,7 @@ function StaplerPrank(){
   const prank=()=>{started.current=performance.now();setPranks(count=>count+1);invalidate();};
   return <group position={[.6,1.12,.12]}>
     <mesh><cylinderGeometry args={[.4,.4,.035,32]}/><meshStandardMaterial color={c.prankPlate}/></mesh>
-    <group {...sceneHover} ref={jelly} position={[0,.02,0]} onClick={event=>{event.stopPropagation();prank();}}>
+    <group ref={jelly} position={[0,.02,0]} onClick={event=>{event.stopPropagation();prank();}}>
       <Box pos={[0,.09,0]} size={[.34,.055,.11]} color={c.prankStapler}/>
       <Box pos={[0,.145,-.01]} size={[.33,.065,.1]} color={c.prankStapler} rotation={[0,0,-.15]}/>
       <mesh scale={[1,.85,1]}><sphereGeometry args={[.36,32,20,0,Math.PI*2,0,Math.PI/2]}/><meshPhysicalMaterial color={c.prankJelly} transparent opacity={.55} roughness={.15} metalness={0} clearcoat={1} depthWrite={false} side={THREE.DoubleSide}/></mesh>
@@ -96,7 +95,7 @@ function Avatar({agent,snapshot,reduced,onSelect}:{agent:SceneAgent;snapshot:Off
   useAvatarMotion(agent,snapshot,!reduced&&active&&revealed&&!travelling,ref,[armL,armR],[legL,legR],useContext(Party));
   const [hover,setHover]=useState(false);
   const c=sceneColors(),shirt=c[TEAM_COLOR[agent.id]],skin=c.avatarSkin;
-  return <group {...sceneHover} ref={ref} position={initial.current} onClick={e=>{e.stopPropagation();onSelect();}} onPointerOver={e=>{e.stopPropagation();setHover(true);document.body.classList.add('cursor-pointer');}} onPointerOut={()=>{setHover(false);document.body.classList.remove('cursor-pointer');}}>
+  return <group ref={ref} position={initial.current} onClick={e=>{e.stopPropagation();onSelect();}} onPointerOver={e=>{e.stopPropagation();setHover(true);document.body.classList.add('cursor-pointer');}} onPointerOut={()=>{setHover(false);document.body.classList.remove('cursor-pointer');}}>
     <mesh position={[0,.73,0]} castShadow><capsuleGeometry args={[.25,.34,4,8]}/><meshStandardMaterial color={shirt}/></mesh>
     <mesh position={[0,1.25,0]} castShadow><sphereGeometry args={[.255,16,12]}/><meshStandardMaterial color={skin}/></mesh>
     <mesh position={[0,1.38,-.055]} castShadow><sphereGeometry args={[.25,12,8,0,Math.PI*2,0,1.65]}/><meshStandardMaterial color={agent.id==='lead'?c.avatarHairLead:c.avatarHair}/></mesh>
@@ -147,7 +146,7 @@ function AzureWall({snapshot,onSelect}:{snapshot:OfficeSnapshot;onSelect:()=>voi
     const t=new THREE.CanvasTexture(canvas);t.colorSpace=THREE.SRGBColorSpace;return t;
   },[status,github,buildCount,prCount,c]);
   useEffect(()=>()=>texture.dispose(),[texture]);
-  return <group {...sceneHover} position={[5.1,0,-6.3]} onClick={e=>{e.stopPropagation();onSelect();}}><Box pos={[0,1.75,0]} size={[3.7,1.6,.15]} color={c.opsFrame}/><mesh position={[0,1.75,.08]}><planeGeometry args={[3.48,1.4]}/><meshBasicMaterial map={texture} toneMapped={false}/></mesh></group>;
+  return <group position={[5.1,0,-6.3]} onClick={e=>{e.stopPropagation();onSelect();}}><Box pos={[0,1.75,0]} size={[3.7,1.6,.15]} color={c.opsFrame}/><mesh position={[0,1.75,.08]}><planeGeometry args={[3.48,1.4]}/><meshBasicMaterial map={texture} toneMapped={false}/></mesh></group>;
 }
 function RoutePacket({from,to,ticket,reduced,startedAt,onSelect}:{from:Role;to:Role;ticket:string;reduced:boolean;startedAt:string;onSelect:()=>void}){
   const ref=useRef<THREE.Group>(null);const a=SPOTS[from],b=SPOTS[to];
@@ -160,7 +159,7 @@ function RoomLabel({position,name,sub,swatch,onClick}:{position:Vec;name:string;
 function Mailbox({snapshot,onSelect,reduced,pmName}:{snapshot:OfficeSnapshot;onSelect:()=>void;reduced:boolean;pmName:string}){
   const letter=useRef<THREE.Group>(null);const count=mailboxWork(snapshot).queued;const c=sceneColors();
   useFrame(s=>{if(letter.current&&!reduced)letter.current.position.y=1.88+Math.sin(s.clock.elapsedTime*2)*.07;});
-  return <group {...sceneHover} position={[2.7,0,5.9]} onClick={e=>{e.stopPropagation();onSelect();}}>
+  return <group position={[2.7,0,5.9]} onClick={e=>{e.stopPropagation();onSelect();}}>
     <Box pos={[0,.53,0]} size={[.22,1.06,.23]} color={c.mailPost}/><Box pos={[0,.08,0]} size={[.7,.12,.6]} color={c.mailPost}/>
     <Box pos={[0,1.35,0]} size={[1,.75,.75]} color={c.mailBody} radius={.15}/>
     <Box pos={[0,1.4,.388]} size={[.66,.095,.025]} color={c.mailSlot}/>
@@ -172,7 +171,7 @@ function Mailbox({snapshot,onSelect,reduced,pmName}:{snapshot:OfficeSnapshot;onS
 const mailLabel=cx('rounded-6 bg-mail-label px-2.5 py-2 text-left whitespace-nowrap text-mail-label-ink shadow-mail-label hover:border-mail-label-hover-line hover:bg-mail-label-hover',sceneLabel);
 function HumanOutbox({snapshot,onSelect}:{snapshot:OfficeSnapshot;onSelect:()=>void}){
   const count=snapshot.outbox.filter(a=>a.status==='open').length+(snapshot.featureQuestions?.filter(round=>round.projectId===snapshot.project?.id).length||0),c=sceneColors();
-  return <group {...sceneHover} position={[-.3,0,5.7]} onClick={e=>{e.stopPropagation();onSelect();}}>
+  return <group position={[-.3,0,5.7]} onClick={e=>{e.stopPropagation();onSelect();}}>
     <Box pos={[0,.6,0]} size={[1.4,1.2,.75]} color={c.outboxBase}/>
     <Box pos={[0,1.24,0]} size={[1.65,.09,1]} color={c.outboxTop}/>
     <Box pos={[0,1.34,-.26]} size={[1.2,.13,.12]} color={c.outboxRail}/>
@@ -312,7 +311,7 @@ function CTORoom({snapshot,onSelect,reduced,pmName}:{snapshot:OfficeSnapshot;onS
     <Box pos={[0,1.22,-6.55]} size={[18.25,2.45,.18]} color={c.ctoWallBack}/><Box pos={[-9,1.22,0]} size={[.18,2.45,13.1]} color={c.ctoWallSide}/>
     <Box pos={[-4.4,.06,-1.6]} size={[6.4,.025,6]} color={c.ctoRug}/><Desk position={SPOTS.cto} active={agent?.activity==='working'} accent={c.teamCto} double/>
     {agent?<Avatar agent={agent} snapshot={{...snapshot,lastHandoff:null}} reduced={reduced} onSelect={()=>onSelect({kind:'cto-chat'})}/>:null}
-    <group {...sceneHover} position={[4.5,0,-5.7]} onClick={e=>{e.stopPropagation();onSelect({kind:'goals'});}}><Box pos={[0,1.5,0]} size={[6,2.25,.2]} color={c.goalsFrame}/><Box pos={[0,1.5,.12]} size={[5.75,2,.02]} color={c.goalsBoard}/>{goals.map((g,i)=><group key={g.id} position={[-1.8+(i%3)*1.8,1.95-Math.floor(i/3)*.85,.17]}><Box size={[1.45,.65,.03]} color={['',c.goalFirst,c.goalNext,c.goalLater,c.goalSomeday][g.priority]}/></group>)}<Html center position={[0,3,0]} zIndexRange={[10,0]}><button type="button" data-scene-label="mail" className={cx(mailLabel,'border-mail-label-line')} onClick={()=>onSelect({kind:'goals'})}><span className="mb-0.5 block text-6 tracking-caps-lg">PROJECT GOALS</span>{' '}<strong className="text-9 font-heading">{goals.length?`${(snapshot.ctoGoals||snapshot.goals||[]).filter(g=>g.status!=='done').length} goals & ideas`:'Add your first idea'} <span aria-hidden>↗</span></strong></button></Html></group>
+    <group position={[4.5,0,-5.7]} onClick={e=>{e.stopPropagation();onSelect({kind:'goals'});}}><Box pos={[0,1.5,0]} size={[6,2.25,.2]} color={c.goalsFrame}/><Box pos={[0,1.5,.12]} size={[5.75,2,.02]} color={c.goalsBoard}/>{goals.map((g,i)=><group key={g.id} position={[-1.8+(i%3)*1.8,1.95-Math.floor(i/3)*.85,.17]}><Box size={[1.45,.65,.03]} color={['',c.goalFirst,c.goalNext,c.goalLater,c.goalSomeday][g.priority]}/></group>)}<Html center position={[0,3,0]} zIndexRange={[10,0]}><button type="button" data-scene-label="mail" className={cx(mailLabel,'border-mail-label-line')} onClick={()=>onSelect({kind:'goals'})}><span className="mb-0.5 block text-6 tracking-caps-lg">PROJECT GOALS</span>{' '}<strong className="text-9 font-heading">{goals.length?`${(snapshot.ctoGoals||snapshot.goals||[]).filter(g=>g.status!=='done').length} goals & ideas`:'Add your first idea'} <span aria-hidden>↗</span></strong></button></Html></group>
     <group position={[4.5,0,2.8]}><Box pos={[0,.5,0]} size={[4.2,.8,1.2]} color={c.ideasSofa}/><Box pos={[0,1,-.45]} size={[4.2,.8,.25]} color={c.ideasSofa}/>{[-2,2].map(x=><Box key={x} pos={[x,.8,0]} size={[.3,.55,1.2]} color={c.ideasSofa}/>)}<Box pos={[0,.55,1.8]} size={[2.4,.15,1.2]} color={c.ideasTable}/><Box pos={[-.3,.65,1.8]} size={[.55,.04,.4]} color={c.ideasPaper}/></group>
     <group position={[-7.9,0,-5.6]}><Box pos={[0,1,0]} size={[1.5,2,.5]} color={c.bookcase}/>{[0,1,2,3].map(i=><group key={i}><Box pos={[0,.35+i*.43,.25]} size={[1.4,.05,.5]} color={c.bookcaseShelf}/>{[0,1,2,3].map(j=><Box key={j} pos={[-.5+j*.3,.58+i*.43,.15]} size={[.15,.37,.3]} color={[c.ctoBookSage,c.ctoBookTan,c.ctoBookSky,c.ctoBookMauve][(j+i)%4]}/>)}</group>)}</group>
     <Pot position={[-8,0,4.9]} scale={1.5}/><Pot position={[8.2,0,-.5]} scale={1.5}/><Pot position={[.3,0,-5.5]} scale={1.1}/>
