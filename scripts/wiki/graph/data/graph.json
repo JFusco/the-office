@@ -1818,9 +1818,15 @@
           "kind": "issue",
           "number": 629,
           "url": "https://github.com/jfusco/the-office/issues/629"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 770,
+          "url": "https://github.com/jfusco/the-office/issues/770"
         }
       ],
-      "bytes": 1751,
+      "bytes": 1817,
       "degree": 3,
       "x": -0.962455,
       "y": -0.27144,
