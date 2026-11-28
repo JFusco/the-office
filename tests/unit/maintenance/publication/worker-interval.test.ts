@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs';
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes } from './support/fake-maintenance-github';
 import { publicationRun } from './support/publication-run';
@@ -5,8 +6,12 @@ import { assertInterval, observeTargets } from '../../../../server/maintenance/p
 import { MaintenanceStop } from '../../../../server/maintenance/publication/maintenance-stop';
 afterEach(cleanupFakes);
 
+// The harness records candidate Git directories as realpaths (prepare-candidate.ts), so the fixture binding does too;
+// otherwise a symlinked temporary directory (macOS /var -> /private/var) fails the Git-directory check.
+const bound = (repo: string) => { const path = realpathSync(repo); return { worktree: path, gitDir: path, gitCommonDir: path }; };
+
 test('an unrelated comment on the issue lets the run proceed; a moved owned branch stops it with authority', async () => {
-    const f = await publicationRun(), targets = { branch: f.branch, worktree: f.project.repo, gitDir: f.project.repo, gitCommonDir: f.project.repo, issue: f.issue.number };
+    const f = await publicationRun(), targets = { branch: f.branch, ...bound(f.project.repo), issue: f.issue.number };
     const execute = (async (program: string, args: string[], options?: any) =>
         args[0] === 'rev-parse' ? targets.worktree : f.execute(program, args, options)) as any;
     const before = await observeTargets(f.store, execute, targets);
@@ -22,7 +27,7 @@ test('an unrelated comment on the issue lets the run proceed; a moved owned bran
 });
 
 test('an unsettled attempted write of the run is an uncertain-effect stop', async () => {
-    const f = await publicationRun(), targets = { branch: f.branch, worktree: f.project.repo, gitDir: f.project.repo, gitCommonDir: f.project.repo, issue: f.issue.number };
+    const f = await publicationRun(), targets = { branch: f.branch, ...bound(f.project.repo), issue: f.issue.number };
     const execute = (async (program: string, args: string[], options?: any) =>
         args[0] === 'rev-parse' ? targets.worktree : f.execute(program, args, options)) as any;
     const before = await observeTargets(f.store, execute, targets);
