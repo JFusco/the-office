@@ -6,6 +6,7 @@ import { assertAutomationAuthority } from '../../readiness/automation-authority'
 import { assertAutomationEffects } from '../../readiness/automation-effects';
 import { automationMergePolicy } from '../../readiness/automation-merge';
 import { rebaseArgs } from './dependabot-rebase';
+import { postPrComment } from '../../../github/pr-conversation-comment';
 import { adoptionFor, botOf, redoBase, redoOf, retirePreparation, type RedoPayload } from './ledger';
 import { checkboxArgs, renovateControl } from './pin-courier-rebase';
 import { readBackRedo } from './read-back';
@@ -139,6 +140,8 @@ export async function requestBotRedo(delivery: GitHubDelivery, job: TicketJob, p
             },
             dispatch: async value => {
                 dispatchedAt = store.getEffect(attempt.id)?.dispatchedAt || '';
+                // Dependabot's command is a PR conversation comment, sent by the shared adapter with its saved argv.
+                if (value.route === 'dependabot-rebase') return postPrComment(execute, store.project.repo, value.args);
                 const out = await execute('gh', value.args, { cwd: store.project.repo, timeout: 60000 });
                 return out.trim() ? JSON.parse(out) : null;
             },

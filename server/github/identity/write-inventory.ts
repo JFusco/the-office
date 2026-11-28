@@ -60,8 +60,10 @@ export const WRITE_INVENTORY: readonly InventoryEntry[] = [
     harness('github-issue-comment', 'rest-issue-comment', 'server/delivery/parking/return-to-pickup.ts'),
     harness('github-issue-comment', 'rest-issue-comment', 'server/delivery/intake/dependabot/alert-issue.ts'),
     direct('github-native-closeout-comment', 'rest-issue-comment', 'server/github/github-operations.ts'),
-    direct('github-issue-comment', 'rest-issue-comment', 'server/github/identity/app-trial/trial-comment.ts'),
+    // The App trial command's fixed adapters, declared where its packet binds them and sent by `app-trial/trial-comment.ts`.
+    direct('github-issue-comment', 'rest-issue-comment', 'server/github/identity/app-trial/trial-packet.ts'),
     direct('github-pr-comment', 'rest-pr-comment', 'server/delivery/repairs/bot-redo/request.ts'),
+    direct('github-pr-comment', 'rest-pr-comment', 'server/github/identity/app-trial/trial-packet.ts'),
     direct('github-workflow-dispatch', 'rest-workflow-dispatch', 'server/delivery/repairs/bot-redo/request.ts'),
     harness('ci-retry', 'rest-rerun-failed-jobs', 'server/delivery/repairs/ci-publication.ts'),
     harness('github-merge-scanner-retry', 'rest-rerun-failed-jobs', 'server/delivery/repairs/merge-scanner-retry.ts'),

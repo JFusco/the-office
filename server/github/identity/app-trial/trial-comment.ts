@@ -5,8 +5,9 @@ import { proofCommentQualification } from '../../../delivery/closeout/proof-comm
 import { sanitize } from '../../../office/security';
 import { EffectUncertainError, type EffectOperation } from '../../../store/effects';
 import type { Store } from '../../../store/store';
+import { sendPrComment } from '../../pr-conversation-comment';
 import { executeGitHubWrite, reconcileGitHubWrite, selectGitHubWriter, type GitHubWriteOptions } from '../write-boundary';
-import { assertSavedTrial, isTrialWriter, TRIAL_AUTHORIZATION, trialExpectedState } from './saved-trial';
+import { assertSavedTrial, isTrialWriter, TRIAL_AUTHORIZATION, trialExpectedState, trialWork } from './saved-trial';
 import { admitTrial } from './trial-admission';
 import { AppTrialPacket, bindPacket, isSuccessorOf, type BoundTrial } from './trial-packet';
 import { refuse } from './trial-refusal';
@@ -26,7 +27,7 @@ const inProgress = new WeakMap<Store, Set<string>>();
 async function reconcile(store: Store, execute: Execute, trial: BoundTrial): Promise<void> {
     const { comment, packet } = trial;
     await reconcileGitHubWrite<CommentReceipt | null>(store, packet.effectId, async sent => {
-        const found = await readProofComment(store, execute, comment, sent, true);
+        const found = await readProofComment(store, execute, comment, sent, true, trial.operation);
         const qualification = found ? await proofCommentQualification(store, execute, comment, packet.effectId, found) : undefined;
         return { verified: found !== null, receipt: found, qualification };
     });
@@ -47,8 +48,8 @@ async function dispatch(store: Store, execute: Execute, trial: BoundTrial): Prom
         trial: { installationId: packet.installationId, repositoryId: packet.repositoryId, admit: () => { admitTrial(store, packet); } },
     };
     const operation: EffectOperation<BoundTrial['payload'], CommentReceipt> = {
-        id: packet.effectId, work: { projectId: store.project.id, kind: 'issue', id: String(packet.issue.number) }, attemptId: packet.effectId,
-        operation: 'github-issue-comment', target, authorization: TRIAL_AUTHORIZATION, payload, expectedState: trialExpectedState(trial),
+        id: packet.effectId, work: trialWork(trial), attemptId: packet.effectId,
+        operation: trial.operation, target, authorization: TRIAL_AUTHORIZATION, payload, expectedState: trialExpectedState(trial),
         // A config, hold, pause or drain change while the intent waits withdraws the approval: the intent is rejected unsent.
         preflight: async () => { admitTrial(store, packet); },
         // The same local admission, synchronous inside the claim transaction after the boundary's writer checks: a
@@ -57,7 +58,8 @@ async function dispatch(store: Store, execute: Execute, trial: BoundTrial): Prom
             try { admitTrial(store, packet); }
             catch (error) { return error instanceof Error ? error.message : String(error); }
         },
-        dispatch: () => sendProofComment(store, execute, comment),
+        // A PR conversation comment goes through the shared PR comment adapter Dependabot redo also sends with.
+        dispatch: () => comment.kind === 'pull' ? sendPrComment(store, execute, comment.number, comment.body) : sendProofComment(store, execute, comment),
         verify: async receipt => {
             if (!await readCommentId(store, execute, comment, author, receipt)) return false;
             return { verified: true, qualification: await proofCommentQualification(store, execute, comment, packet.effectId, receipt) };
@@ -96,7 +98,7 @@ async function invoke(store: Store, execute: Execute, mode: AppTrialResult['mode
     const trial = admitTrial(store, packet);
     await observeTarget(store, execute, trial);
     if (mode === 'check') {
-        if (await findProofComment(store, execute, trial.comment, packet.botLogin, true) !== null) refuse('the issue already shows the marker');
+        if (await findProofComment(store, execute, trial.comment, packet.botLogin, true) !== null) refuse('the conversation already shows the marker');
         // The bound answer holds only if local policy still admits the trial after the last provider read.
         admitTrial(store, packet);
         return trialResult(store.getEffect(id), trial, mode);

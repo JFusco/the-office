@@ -2,6 +2,7 @@ import { activeEffectId, harnessEffect } from '../harness/effect';
 import { readRepo } from '../intake/dependabot/qualify';
 import { commentAuthor } from '../parking/park-comment';
 import { savedAuthor } from '../../github/identity/office-authors';
+import { readPrComment } from '../../github/pr-conversation-comment';
 import { proofCommentQualification } from './proof-comment-qualification';
 import type { Execute } from '../board/project-graphql';
 import type { Store } from '../../store/store';
@@ -18,9 +19,9 @@ const exact = (store: Store, c: ProofComment, author: string, found: any) => com
     found.html_url === `${conversation(store, c)}#issuecomment-${found.id}` && found.issue_url === `https://api.github.com/repos/${store.project.repository}/issues/${c.number}` &&
     found.user?.login === author && found.body === c.body;
 
-function matchesProofComment(store: Store, c: ProofComment, intent: Readonly<EffectIntent>): boolean {
+function matchesProofComment(store: Store, c: ProofComment, intent: Readonly<EffectIntent>, operation = 'github-issue-comment'): boolean {
     const payload = intent.payload as CommentIntent['payload'];
-    return intent.operation === 'github-issue-comment' && intent.target === conversation(store, c) && payload?.number === c.number &&
+    return intent.operation === operation && intent.target === conversation(store, c) && payload?.number === c.number &&
         payload.marker === c.marker && (payload.body === undefined || payload.body === c.body);
 }
 
@@ -39,6 +40,8 @@ export async function findProofComment(store: Store, execute: Execute, c: ProofC
 export async function readCommentId(store: Store, execute: Execute, c: ProofComment, author: string, receipt: unknown): Promise<CommentReceipt | null> {
     const saved = receipt as CommentReceipt;
     if (!commentId(saved?.id) || saved.url !== `${conversation(store, c)}#issuecomment-${saved.id}`) return null;
+    // A pull request conversation comment is read back by the shared PR comment adapter, with the same exact checks.
+    if (c.kind === 'pull') return await readPrComment(store, execute, c.number, saved.id, author, c.body) ? saved : null;
     const found = await readRepo(store, execute, `issues/comments/${saved.id}`);
     return found?.id === saved.id && exact(store, c, author, found) ? saved : null;
 }
@@ -46,9 +49,11 @@ export async function readCommentId(store: Store, execute: Execute, c: ProofComm
 /**
  * A known POST receipt is tied to its exact ID. A lost response can only be recovered by a unique exact marker; with
  * `requireReadableBodies`, a listing with an unreadable body cannot show that uniqueness and the read-back throws.
+ * `operation` is the Effect operation the intent was saved under: the harness proof comment's, unless a caller names
+ * another fixed adapter that sends the same comment.
  */
-export async function readProofComment(store: Store, execute: Execute, c: ProofComment, sent: Readonly<EffectIntent>, requireReadableBodies = false): Promise<CommentReceipt | null> {
-    if (!matchesProofComment(store, c, sent)) return null;
+export async function readProofComment(store: Store, execute: Execute, c: ProofComment, sent: Readonly<EffectIntent>, requireReadableBodies = false, operation = 'github-issue-comment'): Promise<CommentReceipt | null> {
+    if (!matchesProofComment(store, c, sent, operation)) return null;
     const author = (sent.payload as CommentIntent['payload']).author ?? savedAuthor(sent);
     return sent.receipt == null ? findProofComment(store, execute, c, author, requireReadableBodies) : readCommentId(store, execute, c, author, sent.receipt);
 }

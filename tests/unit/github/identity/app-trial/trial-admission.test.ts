@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { admitTrial } from '../../../../../server/github/identity/app-trial/trial-admission';
 import { AppTrialPacket } from '../../../../../server/github/identity/app-trial/trial-packet';
-import { ENTRY, ISSUE, PACKET, trialOffice, type TrialOffice } from './support/trial-fixture';
+import { ENTRY, ISSUE, PACKET, PR_ENTRY, PR_PACKET, prPacket, PULL, trialOffice, type TrialOffice } from './support/trial-fixture';
 
 const holds = vi.hoisted(() => ({ value: {} as Record<string, string> }));
 vi.mock('../../../../../server/office/project-holds', async original => ({
@@ -69,4 +69,25 @@ test('a held route refuses with its reason', () => {
 test('the packet binding is checked first', () => {
     f = trialOffice();
     expect(() => admit(f!, { ...PACKET, projectId: 'brain' })).toThrow(/project or repository/);
+});
+
+test('a PR trial is admitted only against its own approved entry', () => {
+    f = trialOffice({ comment: PR_ENTRY });
+    expect(admit(f, PR_PACKET)).toMatchObject({ operation: 'github-pr-comment', target: PULL, entry: PR_ENTRY });
+    expect(() => admit(f!, PACKET)).toThrow(/does not name this Effect/);
+    f.configure({ comment: ENTRY });
+    expect(() => admit(f!, PR_PACKET)).toThrow(/does not name this Effect/);
+});
+
+test.each([
+    ['another head', { head: { sha: 'b'.repeat(40), ref: 'office-app-trial-fixture' } }],
+    ['another base', { base: { ref: 'release' } }],
+    ['another PR id', { id: 3000000002 }],
+    ['another PR node id', { nodeId: 'PR_other' }],
+])('a replacement PR packet with %s and its own valid digest cannot reuse the approved entry', (_name, change) => {
+    f = trialOffice({ comment: PR_ENTRY });
+    const replacement = prPacket({ ...PR_PACKET.pull, ...change });
+    expect(replacement.expectedDigest).not.toBe(PR_PACKET.expectedDigest);
+    expect(() => admit(f!, replacement)).toThrow(/does not name this Effect/);
+    expect([f.effects(), f.counts.posts, f.counts.tokens]).toEqual([[], [], 0]);
 });

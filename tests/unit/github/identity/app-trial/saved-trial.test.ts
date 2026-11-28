@@ -1,9 +1,9 @@
 import { expect, test } from 'vitest';
 import type { EffectIntent } from '../../../../../src/shared';
-import { assertSavedTrial, isTrialWriter, TRIAL_AUTHORIZATION, trialExpectedState } from '../../../../../server/github/identity/app-trial/saved-trial';
+import { assertSavedTrial, isTrialWriter, TRIAL_AUTHORIZATION, trialExpectedState, trialWork } from '../../../../../server/github/identity/app-trial/saved-trial';
 import { AppTrialPacket, bindPacket } from '../../../../../server/github/identity/app-trial/trial-packet';
 import { entryDigest } from '../../../../../server/github/identity/route-entry';
-import { ENTRY, ISSUE, PACKET, PROJECT } from './support/trial-fixture';
+import { ENTRY, ISSUE, PACKET, PR_ENTRY, PR_PACKET, PROJECT, PULL } from './support/trial-fixture';
 
 const trial = bindPacket(PROJECT, AppTrialPacket.parse(PACKET));
 const writer = () => ({
@@ -42,4 +42,19 @@ test('the packet digest binds the remote issue identity: a packet naming another
         const other = bindPacket(PROJECT, AppTrialPacket.parse({ ...PACKET, issue }));
         expect(() => assertSavedTrial(intent(), other)).toThrow(/not the approved App trial/);
     }
+});
+
+test('a PR trial pins the github-pr-comment writer on its PR URL and is saved under the pull request', () => {
+    const pr = bindPacket(PROJECT, AppTrialPacket.parse(PR_PACKET));
+    const prWriter = { ...writer(), grant: { kind: 'trial' as const, entryDigest: entryDigest(PR_ENTRY) },
+        binding: { adapter: 'github-pr-comment', target: PULL, expectedDigest: PR_PACKET.expectedDigest, beforeDigest: PR_PACKET.beforeDigest } };
+    expect(trialWork(pr)).toEqual({ projectId: 'the-office', kind: 'pr', id: '9001' });
+    expect(isTrialWriter(prWriter, pr)).toBe(true);
+    expect(isTrialWriter({ ...prWriter, binding: { ...prWriter.binding, adapter: 'github-issue-comment' } }, pr)).toBe(false);
+    const saved = intent({ id: PR_PACKET.effectId, attemptId: PR_PACKET.effectId, work: trialWork(pr), operation: 'github-pr-comment', target: PULL,
+        payload: { ...pr.payload }, expectedState: trialExpectedState(pr), writer: prWriter });
+    expect(() => assertSavedTrial(saved, pr)).not.toThrow();
+    for (const change of [{ operation: 'github-issue-comment' }, { work: { projectId: 'the-office', kind: 'issue' as const, id: '9001' } },
+        { payload: { ...pr.payload, pull: { ...pr.payload.pull!, head: { sha: 'b'.repeat(40), ref: 'x' } } } }])
+        expect(() => assertSavedTrial({ ...saved, ...change } as EffectIntent, pr), JSON.stringify(change)).toThrow(/not the approved App trial/);
 });
